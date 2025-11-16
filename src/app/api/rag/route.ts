@@ -2,150 +2,77 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { vectorService } from '@/lib/vector-service';
 
-// GET - List all RAG contents for a business
+/**
+ * TODO: GET - List all RAG contents for a business
+ *
+ * Steps:
+ * 1. Get businessId from query parameters
+ * 2. Validate businessId exists
+ * 3. Query database for all RAGContent records for that business
+ * 4. Order by createdAt descending
+ * 5. Return JSON array of contents
+ *
+ * @param req - Next.js request object
+ * @returns NextResponse with JSON array of RAG contents
+ */
 export async function GET(req: NextRequest) {
-  try {
-    const searchParams = req.nextUrl.searchParams;
-    const businessId = searchParams.get('businessId');
-
-    if (!businessId) {
-      return NextResponse.json({ error: 'Business ID required' }, { status: 400 });
-    }
-
-    const contents = await prisma.rAGContent.findMany({
-      where: { businessId },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return NextResponse.json(contents);
-  } catch (error) {
-    console.error('Error fetching RAG contents:', error);
-    return NextResponse.json({ error: 'Failed to fetch contents' }, { status: 500 });
-  }
+  // TODO: Implement GET handler
+  throw new Error('Not implemented: GET /api/rag');
 }
 
-// POST - Create new RAG content
+/**
+ * TODO: POST - Create new RAG content
+ *
+ * Steps:
+ * 1. Parse JSON body (businessId, title, content, category, metadata)
+ * 2. Validate required fields
+ * 3. Create record in database using prisma.rAGContent.create()
+ * 4. Use vectorService.upsertContent() to add to Pinecone
+ *    - Use the database record ID as the vector ID
+ *    - Include title, content, category in metadata
+ * 5. Update database record with vectorId
+ * 6. Return the created content as JSON
+ *
+ * @param req - Next.js request object
+ * @returns NextResponse with created RAG content
+ */
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { businessId, title, content, category, metadata } = body;
-
-    if (!businessId || !title || !content || !category) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-
-    // Create in database
-    const ragContent = await prisma.rAGContent.create({
-      data: {
-        businessId,
-        title,
-        content,
-        category,
-        metadata: metadata || {},
-      },
-    });
-
-    // Add to vector database
-    try {
-      const { embedding } = await vectorService.upsertContent(
-        ragContent.id,
-        content,
-        {
-          businessId,
-          title,
-          category,
-          ...metadata,
-        }
-      );
-
-      // Update with vector ID
-      await prisma.rAGContent.update({
-        where: { id: ragContent.id },
-        data: { vectorId: ragContent.id },
-      });
-    } catch (vectorError) {
-      console.error('Error adding to vector database:', vectorError);
-      // Continue even if vector insertion fails
-    }
-
-    return NextResponse.json(ragContent, { status: 201 });
-  } catch (error) {
-    console.error('Error creating RAG content:', error);
-    return NextResponse.json({ error: 'Failed to create content' }, { status: 500 });
-  }
+  // TODO: Implement POST handler
+  throw new Error('Not implemented: POST /api/rag');
 }
 
-// PUT - Update RAG content
+/**
+ * TODO: PUT - Update existing RAG content
+ *
+ * Steps:
+ * 1. Parse JSON body (id, title, content, category, metadata)
+ * 2. Validate required fields
+ * 3. Update database record using prisma.rAGContent.update()
+ * 4. Use vectorService.updateContent() to update in Pinecone
+ * 5. Return the updated content as JSON
+ *
+ * @param req - Next.js request object
+ * @returns NextResponse with updated RAG content
+ */
 export async function PUT(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { id, title, content, category, metadata, isActive } = body;
-
-    if (!id) {
-      return NextResponse.json({ error: 'Content ID required' }, { status: 400 });
-    }
-
-    // Update in database
-    const ragContent = await prisma.rAGContent.update({
-      where: { id },
-      data: {
-        title,
-        content,
-        category,
-        metadata,
-        isActive,
-      },
-    });
-
-    // Update in vector database if content changed
-    if (content) {
-      try {
-        await vectorService.updateContent(id, content, {
-          businessId: ragContent.businessId,
-          title: ragContent.title,
-          category: ragContent.category,
-          ...metadata,
-        });
-      } catch (vectorError) {
-        console.error('Error updating vector database:', vectorError);
-      }
-    }
-
-    return NextResponse.json(ragContent);
-  } catch (error) {
-    console.error('Error updating RAG content:', error);
-    return NextResponse.json({ error: 'Failed to update content' }, { status: 500 });
-  }
+  // TODO: Implement PUT handler
+  throw new Error('Not implemented: PUT /api/rag');
 }
 
-// DELETE - Delete RAG content
+/**
+ * TODO: DELETE - Remove RAG content
+ *
+ * Steps:
+ * 1. Get id from query parameters
+ * 2. Find the content in database to get vectorId
+ * 3. Delete from Pinecone using vectorService.deleteContent()
+ * 4. Delete from database using prisma.rAGContent.delete()
+ * 5. Return success response
+ *
+ * @param req - Next.js request object
+ * @returns NextResponse with success message
+ */
 export async function DELETE(req: NextRequest) {
-  try {
-    const searchParams = req.nextUrl.searchParams;
-    const id = searchParams.get('id');
-
-    if (!id) {
-      return NextResponse.json({ error: 'Content ID required' }, { status: 400 });
-    }
-
-    // Delete from vector database
-    try {
-      await vectorService.deleteContent(id);
-    } catch (vectorError) {
-      console.error('Error deleting from vector database:', vectorError);
-    }
-
-    // Delete from database
-    await prisma.rAGContent.delete({
-      where: { id },
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting RAG content:', error);
-    return NextResponse.json({ error: 'Failed to delete content' }, { status: 500 });
-  }
+  // TODO: Implement DELETE handler
+  throw new Error('Not implemented: DELETE /api/rag');
 }

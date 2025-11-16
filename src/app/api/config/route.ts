@@ -1,111 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-// GET - Get all configurations for a business
+/**
+ * TODO: GET - Get all configurations for a business
+ *
+ * Steps:
+ * 1. Get businessId from query parameters
+ * 2. Validate businessId exists
+ * 3. Query database for all Configuration records for that business
+ * 4. Convert array to key-value object using reduce()
+ * 5. Return JSON object of configurations
+ *
+ * @param req - Next.js request object
+ * @returns NextResponse with JSON object of configurations
+ */
 export async function GET(req: NextRequest) {
-  try {
-    const searchParams = req.nextUrl.searchParams;
-    const businessId = searchParams.get('businessId');
-
-    if (!businessId) {
-      return NextResponse.json({ error: 'Business ID required' }, { status: 400 });
-    }
-
-    const configurations = await prisma.configuration.findMany({
-      where: { businessId },
-    });
-
-    // Convert to key-value object
-    const configObj = configurations.reduce((acc, config) => {
-      acc[config.key] = config.value;
-      return acc;
-    }, {} as Record<string, any>);
-
-    return NextResponse.json(configObj);
-  } catch (error) {
-    console.error('Error fetching configurations:', error);
-    return NextResponse.json({ error: 'Failed to fetch configurations' }, { status: 500 });
-  }
+  // TODO: Implement GET handler
+  throw new Error('Not implemented: GET /api/config');
 }
 
-// POST - Update or create configuration
+/**
+ * TODO: POST - Create or update a configuration
+ *
+ * Steps:
+ * 1. Parse JSON body (businessId, key, value, type)
+ * 2. Validate required fields
+ * 3. Use prisma.configuration.upsert() to create or update
+ *    - where: { businessId_key: { businessId, key } }
+ *    - update: { value, type }
+ *    - create: { businessId, key, value, type }
+ * 4. Return the created/updated configuration as JSON
+ *
+ * Configuration keys examples:
+ * - 'ai_personality': { text: "professional and helpful" }
+ * - 'greeting_message': { text: "Hello! How can I help?" }
+ * - 'max_call_duration': { seconds: 300 }
+ *
+ * @param req - Next.js request object
+ * @returns NextResponse with configuration
+ */
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { businessId, key, value, type } = body;
-
-    if (!businessId || !key || value === undefined) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-
-    const configuration = await prisma.configuration.upsert({
-      where: {
-        businessId_key: {
-          businessId,
-          key,
-        },
-      },
-      update: {
-        value,
-        type: type || 'json',
-      },
-      create: {
-        businessId,
-        key,
-        value,
-        type: type || 'json',
-      },
-    });
-
-    return NextResponse.json(configuration);
-  } catch (error) {
-    console.error('Error updating configuration:', error);
-    return NextResponse.json({ error: 'Failed to update configuration' }, { status: 500 });
-  }
+  // TODO: Implement POST handler
+  throw new Error('Not implemented: POST /api/config');
 }
 
-// PUT - Bulk update configurations
+/**
+ * TODO: PUT - Bulk update configurations
+ *
+ * Steps:
+ * 1. Parse JSON body (businessId, configurations object)
+ * 2. Validate required fields
+ * 3. Loop through configurations object
+ * 4. For each key-value pair, use prisma.configuration.upsert()
+ * 5. Use Promise.all() to run updates in parallel
+ * 6. Return success response
+ *
+ * @param req - Next.js request object
+ * @returns NextResponse with success message
+ */
 export async function PUT(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { businessId, configurations } = body;
-
-    if (!businessId || !configurations) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-
-    // Update each configuration
-    const updates = Object.entries(configurations).map(([key, value]) =>
-      prisma.configuration.upsert({
-        where: {
-          businessId_key: {
-            businessId,
-            key,
-          },
-        },
-        update: {
-          value: value as any,
-        },
-        create: {
-          businessId,
-          key,
-          value: value as any,
-          type: 'json',
-        },
-      })
-    );
-
-    await Promise.all(updates);
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error bulk updating configurations:', error);
-    return NextResponse.json({ error: 'Failed to update configurations' }, { status: 500 });
-  }
+  // TODO: Implement PUT handler
+  throw new Error('Not implemented: PUT /api/config');
 }
