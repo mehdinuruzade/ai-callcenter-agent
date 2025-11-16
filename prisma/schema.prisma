@@ -1,0 +1,119 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(MANAGER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businesses Business[]
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+}
+
+model Business {
+  id          String   @id @default(cuid())
+  name        String
+  domain      String   // e.g., "healthcare", "retail", "restaurant"
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  ragContents    RAGContent[]
+  configurations Configuration[]
+  callLogs       CallLog[]
+  phoneNumbers   PhoneNumber[]
+
+  @@index([userId])
+}
+
+model RAGContent {
+  id         String   @id @default(cuid())
+  title      String
+  content    String   @db.Text
+  category   String // e.g., "FAQ", "Product Info", "Policy"
+  metadata   Json? // Additional structured data
+  vectorId   String? // Pinecone vector ID
+  embedding  String? @db.Text // Cached embedding if needed
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([category])
+}
+
+model Configuration {
+  id    String @id @default(cuid())
+  key   String // e.g., "ai_personality", "greeting_message", "max_call_duration"
+  value Json // Flexible JSON value
+  type  String // e.g., "string", "number", "boolean", "json"
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([businessId, key])
+  @@index([businessId])
+}
+
+model CallLog {
+  id              String   @id @default(cuid())
+  callSid         String   @unique // Twilio Call SID
+  fromNumber      String
+  toNumber        String
+  duration        Int? // Duration in seconds
+  status          String // "initiated", "in-progress", "completed", "failed"
+  recordingUrl    String?
+  transcript      String?  @db.Text
+  summary         String?  @db.Text
+  sentiment       String? // "positive", "neutral", "negative"
+  resolvedIssue   Boolean?
+  metadata        Json? // Additional call data
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model PhoneNumber {
+  id          String   @id @default(cuid())
+  number      String   @unique
+  friendlyName String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+}
