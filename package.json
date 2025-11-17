@@ -17,6 +17,7 @@
     "react-dom": "^18.3.0",
     "ai": "^3.3.0",
     "twilio": "^5.0.0",
+    "@openai/realtime-api-beta": "^0.4.0",
     "openai": "^4.52.0",
     "@prisma/client": "^5.14.0",
     "@pinecone-database/pinecone": "^2.2.0",
