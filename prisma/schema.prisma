@@ -6,7 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = env("DIRECT_URL")
 }
 
 model User {
@@ -50,10 +50,10 @@ model RAGContent {
   id         String   @id @default(cuid())
   title      String
   content    String   @db.Text
-  category   String // e.g., "FAQ", "Product Info", "Policy"
-  metadata   Json? // Additional structured data
-  vectorId   String? // Pinecone vector ID
-  embedding  String? @db.Text // Cached embedding if needed
+  category   String
+  metadata   Json?
+  vectorId   String?  // Remove this - not needed anymore
+  embedding  Unsupported("vector(1536)")?  // Add this
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

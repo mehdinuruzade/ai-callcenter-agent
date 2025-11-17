@@ -3,222 +3,358 @@
 import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 
-interface ConfigItem {
-  key: string;
-  label: string;
-  type: 'text' | 'textarea' | 'number' | 'boolean';
-  description: string;
+interface Business {
+  id: string;
+  name: string;
 }
 
-const CONFIG_ITEMS: ConfigItem[] = [
-  {
-    key: 'ai_personality',
-    label: 'AI Personality',
-    type: 'textarea',
-    description: 'Define how the AI agent should behave and communicate',
+interface ConfigValue {
+  value: any;
+  type: string;
+}
+
+interface Configs {
+  [key: string]: ConfigValue;
+}
+
+const defaultConfigs: Configs = {
+  ai_personality: {
+    value: 'friendly and professional',
+    type: 'string',
   },
-  {
-    key: 'greeting_message',
-    label: 'Greeting Message',
-    type: 'textarea',
-    description: 'The initial message when a call starts',
+  greeting_message: {
+    value: 'Hello! Thank you for calling. How can I help you today?',
+    type: 'string',
   },
-  {
-    key: 'max_call_duration',
-    label: 'Max Call Duration (seconds)',
+  max_call_duration: {
+    value: 300,
     type: 'number',
-    description: 'Maximum duration for a single call',
   },
-  {
-    key: 'enable_recording',
-    label: 'Enable Call Recording',
+  enable_voicemail: {
+    value: true,
     type: 'boolean',
-    description: 'Record all calls for quality assurance',
   },
-  {
-    key: 'transfer_number',
-    label: 'Transfer Phone Number',
-    type: 'text',
-    description: 'Phone number to transfer calls if AI cannot handle',
+  voicemail_message: {
+    value: 'Sorry we missed your call. Please leave a message and we will get back to you soon.',
+    type: 'string',
   },
-  {
-    key: 'business_hours',
-    label: 'Business Hours',
-    type: 'textarea',
-    description: 'Define operating hours (JSON format)',
+  transfer_number: {
+    value: '',
+    type: 'string',
   },
-  {
-    key: 'sentiment_analysis',
-    label: 'Enable Sentiment Analysis',
+  enable_transfer: {
+    value: false,
     type: 'boolean',
-    description: 'Analyze customer sentiment during calls',
   },
-];
+  operating_hours_message: {
+    value: 'We are currently closed. Our hours are Monday-Friday 9 AM to 5 PM.',
+    type: 'string',
+  },
+  language: {
+    value: 'en',
+    type: 'string',
+  },
+  voice_speed: {
+    value: 1.0,
+    type: 'number',
+  },
+  conversation_style: {
+    value: 'concise',
+    type: 'string',
+  },
+};
 
 export default function ConfigPage() {
-  const [config, setConfig] = useState<Record<string, any>>({});
-  const [loading, setLoading] = useState(true);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [selectedBusiness, setSelectedBusiness] = useState('');
+  const [configs, setConfigs] = useState<Configs>(defaultConfigs);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [businessId, setBusinessId] = useState(''); // Should come from context/auth
 
   useEffect(() => {
-    fetchConfig();
+    fetchBusinesses();
   }, []);
 
-  const fetchConfig = async () => {
+  useEffect(() => {
+    if (selectedBusiness) {
+      fetchConfigs();
+    }
+  }, [selectedBusiness]);
+
+  const fetchBusinesses = async () => {
     try {
-      const response = await fetch(`/api/config?businessId=${businessId}`);
-      const data = await response.json();
-      setConfig(data);
+      const res = await fetch('/api/businesses');
+      const data = await res.json();
+      setBusinesses(data);
+      if (data.length > 0) {
+        setSelectedBusiness(data[0].id);
+      }
     } catch (error) {
-      console.error('Error fetching config:', error);
+      console.error('Error fetching businesses:', error);
+    }
+  };
+
+  const fetchConfigs = async () => {
+    if (!selectedBusiness) return;
+    
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/config?businessId=${selectedBusiness}`);
+      const data = await res.json();
+      
+      // Merge fetched configs with defaults
+      const mergedConfigs = { ...defaultConfigs };
+      Object.keys(data.configs).forEach((key) => {
+        if (mergedConfigs[key]) {
+          mergedConfigs[key].value = data.configs[key];
+        }
+      });
+      
+      setConfigs(mergedConfigs);
+    } catch (error) {
+      console.error('Error fetching configs:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSave = async () => {
+    if (!selectedBusiness) {
+      alert('Please select a business');
+      return;
+    }
+
     setSaving(true);
     try {
-      const response = await fetch('/api/config', {
+      const res = await fetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessId, configurations: config }),
+        body: JSON.stringify({
+          businessId: selectedBusiness,
+          configs,
+        }),
       });
 
-      if (response.ok) {
+      if (res.ok) {
         alert('Configuration saved successfully!');
+      } else {
+        alert('Failed to save configuration');
       }
     } catch (error) {
-      console.error('Error saving config:', error);
-      alert('Failed to save configuration');
+      alert('Error saving configuration');
     } finally {
       setSaving(false);
     }
   };
 
   const updateConfig = (key: string, value: any) => {
-    setConfig((prev) => ({
-      ...prev,
-      [key]: { text: value },
-    }));
+    setConfigs({
+      ...configs,
+      [key]: {
+        ...configs[key],
+        value,
+      },
+    });
   };
 
-  if (loading) {
-    return (
-      <AdminLayout>
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-        </div>
-      </AdminLayout>
-    );
-  }
+  const configSections = [
+    {
+      title: 'AI Personality',
+      icon: '🤖',
+      configs: ['ai_personality', 'conversation_style', 'language'],
+    },
+    {
+      title: 'Greeting & Messages',
+      icon: '💬',
+      configs: ['greeting_message', 'operating_hours_message', 'voicemail_message'],
+    },
+    {
+      title: 'Call Settings',
+      icon: '📞',
+      configs: ['max_call_duration', 'enable_voicemail', 'voice_speed'],
+    },
+    {
+      title: 'Transfer Settings',
+      icon: '↪️',
+      configs: ['enable_transfer', 'transfer_number'],
+    },
+  ];
+
+  const renderConfigInput = (key: string, config: ConfigValue) => {
+    const labels: { [key: string]: string } = {
+      ai_personality: 'AI Personality',
+      greeting_message: 'Greeting Message',
+      max_call_duration: 'Max Call Duration (seconds)',
+      enable_voicemail: 'Enable Voicemail',
+      voicemail_message: 'Voicemail Message',
+      transfer_number: 'Transfer Phone Number',
+      enable_transfer: 'Enable Call Transfer',
+      operating_hours_message: 'After Hours Message',
+      language: 'Language',
+      voice_speed: 'Voice Speed (0.5 - 2.0)',
+      conversation_style: 'Conversation Style',
+    };
+
+    const placeholders: { [key: string]: string } = {
+      ai_personality: 'e.g., friendly and professional',
+      greeting_message: 'What should the AI say when answering?',
+      transfer_number: '+1234567890',
+      conversation_style: 'concise, detailed, or casual',
+    };
+
+    switch (config.type) {
+      case 'boolean':
+        return (
+          <div key={key} className="flex items-center justify-between py-3">
+            <label className="text-sm font-medium text-gray-700">
+              {labels[key] || key}
+            </label>
+            <input
+              type="checkbox"
+              checked={config.value}
+              onChange={(e) => updateConfig(key, e.target.checked)}
+              className="h-4 w-4 text-primary-600 rounded"
+            />
+          </div>
+        );
+
+      case 'number':
+        return (
+          <div key={key} className="py-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {labels[key] || key}
+            </label>
+            <input
+              type="number"
+              value={config.value}
+              onChange={(e) => updateConfig(key, parseFloat(e.target.value))}
+              step={key === 'voice_speed' ? '0.1' : '1'}
+              min={key === 'voice_speed' ? '0.5' : '0'}
+              max={key === 'voice_speed' ? '2.0' : undefined}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+          </div>
+        );
+
+      case 'string':
+        if (key.includes('message') || key === 'ai_personality') {
+          return (
+            <div key={key} className="py-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {labels[key] || key}
+              </label>
+              <textarea
+                value={config.value}
+                onChange={(e) => updateConfig(key, e.target.value)}
+                rows={3}
+                placeholder={placeholders[key]}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+            </div>
+          );
+        }
+
+        return (
+          <div key={key} className="py-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {labels[key] || key}
+            </label>
+            <input
+              type="text"
+              value={config.value}
+              onChange={(e) => updateConfig(key, e.target.value)}
+              placeholder={placeholders[key]}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
 
   return (
     <AdminLayout>
       <div className="px-4 sm:px-6 lg:px-8">
-        <div className="sm:flex sm:items-center">
-          <div className="sm:flex-auto">
-            <h1 className="text-2xl font-semibold text-gray-900">
-              AI Configuration
-            </h1>
-            <p className="mt-2 text-sm text-gray-700">
-              Configure how your AI call center agent behaves
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">AI Configuration</h1>
+          <p className="mt-2 text-sm text-gray-700">
+            Customize your AI agent's behavior and responses
+          </p>
+        </div>
+
+        {/* Business Selector */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Select Business
+          </label>
+          <select
+            value={selectedBusiness}
+            onChange={(e) => setSelectedBusiness(e.target.value)}
+            className="w-full md:w-96 px-3 py-2 border border-gray-300 rounded-md"
+          >
+            <option value="">Choose a business...</option>
+            {businesses.map((business) => (
+              <option key={business.id} value={business.id}>
+                {business.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Configuration Sections */}
+        {selectedBusiness && (
+          <>
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {configSections.map((section) => (
+                  <div key={section.title} className="bg-white rounded-lg shadow-md overflow-hidden">
+                    <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        <span className="mr-2">{section.icon}</span>
+                        {section.title}
+                      </h2>
+                    </div>
+                    <div className="px-6 divide-y divide-gray-200">
+                      {section.configs.map((key) =>
+                        configs[key] ? renderConfigInput(key, configs[key]) : null
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Save Button */}
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 font-medium"
+                  >
+                    {saving ? 'Saving...' : 'Save Configuration'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {!selectedBusiness && !loading && (
+          <div className="bg-white rounded-lg shadow-md p-12 text-center">
+            <div className="text-6xl mb-4">⚙️</div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Select a business to configure
+            </h3>
+            <p className="text-gray-600">
+              Choose a business from the dropdown above to customize its AI settings
             </p>
           </div>
-          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save Configuration'}
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-8 space-y-6">
-          {CONFIG_ITEMS.map((item) => (
-            <div
-              key={item.key}
-              className="bg-white shadow sm:rounded-lg p-6"
-            >
-              <div className="mb-2">
-                <label className="block text-sm font-medium text-gray-900">
-                  {item.label}
-                </label>
-                <p className="text-sm text-gray-500 mt-1">{item.description}</p>
-              </div>
-
-              {item.type === 'text' && (
-                <input
-                  type="text"
-                  value={config[item.key]?.text || ''}
-                  onChange={(e) => updateConfig(item.key, e.target.value)}
-                  className="mt-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                />
-              )}
-
-              {item.type === 'textarea' && (
-                <textarea
-                  value={config[item.key]?.text || ''}
-                  onChange={(e) => updateConfig(item.key, e.target.value)}
-                  rows={4}
-                  className="mt-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                />
-              )}
-
-              {item.type === 'number' && (
-                <input
-                  type="number"
-                  value={config[item.key]?.text || ''}
-                  onChange={(e) => updateConfig(item.key, e.target.value)}
-                  className="mt-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                />
-              )}
-
-              {item.type === 'boolean' && (
-                <div className="mt-2">
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={config[item.key]?.text === 'true'}
-                      onChange={(e) =>
-                        updateConfig(item.key, e.target.checked ? 'true' : 'false')
-                      }
-                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                    />
-                    <span className="ml-2 text-sm text-gray-700">Enabled</span>
-                  </label>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-6 bg-yellow-50 border-l-4 border-yellow-400 p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg
-                className="h-5 w-5 text-yellow-400"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-yellow-700">
-                Configuration changes will take effect immediately for new calls.
-                Existing calls will continue with their original configuration.
-              </p>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </AdminLayout>
   );
