@@ -27,6 +27,7 @@ export class VectorService {
    * Store RAG content with embedding in Supabase
    */
   async storeContent(data: {
+    id?: string;
     title: string;
     content: string;
     category: string;
@@ -36,6 +37,7 @@ export class VectorService {
     try {
       // Create embedding
       const embedding = await this.createEmbedding(data.content);
+      const recordId = data.id ?? null;
 
       // Store in database with embedding
       const ragContent = await prisma.$executeRaw`
@@ -43,7 +45,7 @@ export class VectorService {
           id, title, content, category, "businessId", 
           metadata, embedding, "isActive", "createdAt", "updatedAt"
         ) VALUES (
-          gen_random_uuid()::text,
+          COALESCE(${recordId}, gen_random_uuid()::text),
           ${data.title},
           ${data.content},
           ${data.category},
@@ -129,6 +131,23 @@ Relevance: ${(result.similarity * 100).toFixed(1)}%
 
     return context;
   }
+
+  /**
+ * Delete RAG content and its embedding
+ */
+async deleteContent(id: string): Promise<void> {
+  try {
+    // Delete from database (this also removes the embedding)
+    await prisma.rAGContent.delete({
+      where: { id },
+    });
+
+    console.log(`✅ Content ${id} deleted successfully`);
+  } catch (error) {
+    console.error('Error deleting content:', error);
+    throw error;
+  }
+}
 }
 
 export const vectorService = new VectorService();
