@@ -2,11 +2,13 @@
 
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 model User {
@@ -47,16 +49,15 @@ model Business {
 }
 
 model RAGContent {
-  id         String   @id @default(cuid())
+  id         String                     @id @default(cuid())
   title      String
-  content    String   @db.Text
-  category   String // e.g., "FAQ", "Product Info", "Policy"
-  metadata   Json? // Additional structured data
-  vectorId   String? // Pinecone vector ID
-  embedding  String? @db.Text // Cached embedding if needed
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  content    String                     @db.Text
+  category   String                     // e.g., "FAQ", "Product Info", "Policy"
+  metadata   Json?                      // Additional structured data
+  embedding  Unsupported("vector(1536)")? // pgvector embedding (1536 dimensions for text-embedding-3-small)
+  isActive   Boolean                    @default(true)
+  createdAt  DateTime                   @default(now())
+  updatedAt  DateTime                   @updatedAt
 
   businessId String
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
