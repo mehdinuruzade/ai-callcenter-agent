@@ -14,294 +14,135 @@ export class RealtimeService {
   private sessions: Map<string, RealtimeSession> = new Map();
 
   /**
-   * Create a new real-time session for a call
+   * TODO: Create a new real-time session for a call
+   *
+   * Steps:
+   * 1. Create a session object with callSid, businessId, ws, empty transcript
+   * 2. Store it in this.sessions Map using callSid as key
+   * 3. Call this.initializeOpenAI(session) to set up OpenAI connection
+   * 4. Return the session
+   *
+   * @param callSid - Twilio call SID
+   * @param businessId - Business identifier
+   * @param ws - WebSocket connection to Twilio
+   * @returns Promise<RealtimeSession>
    */
   async createSession(
     callSid: string,
     businessId: string,
     ws: WebSocket
   ): Promise<RealtimeSession> {
-    const session: RealtimeSession = {
-      callSid,
-      businessId,
-      ws,
-      transcript: [],
-    };
-
-    this.sessions.set(callSid, session);
-
-    // Initialize OpenAI Real-time API connection
-    await this.initializeOpenAI(session);
-
-    return session;
+    // TODO: Implement session creation
+    throw new Error('Not implemented: createSession');
   }
 
   /**
-   * Initialize OpenAI Real-time API WebSocket connection
+   * TODO: Initialize OpenAI Real-time API WebSocket connection
+   *
+   * Steps:
+   * 1. Create WebSocket to 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01'
+   * 2. Add headers: Authorization (Bearer token) and 'OpenAI-Beta': 'realtime=v1'
+   * 3. Store openaiWs in session.openaiWs
+   * 4. Set up event handlers:
+   *    - 'open': Send session.update with configuration (see OpenAI docs)
+   *    - 'message': Handle different response types (audio.delta, transcription, function_call, etc.)
+   *    - 'error': Log errors
+   *    - 'close': Log closure
+   * 5. In session.update, include:
+   *    - modalities: ['text', 'audio']
+   *    - instructions: system prompt from buildSystemInstructions()
+   *    - voice: 'alloy'
+   *    - audio formats: 'g711_ulaw' (for Twilio compatibility)
+   *    - tools: Define 'query_knowledge_base' function
+   *    - turn_detection: server_vad for real-time detection
+   *
+   * @param session - The realtime session
    */
   private async initializeOpenAI(session: RealtimeSession) {
-    const openaiWs = new WebSocket(
-      'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01',
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          'OpenAI-Beta': 'realtime=v1',
-        },
-      }
-    );
-
-    session.openaiWs = openaiWs;
-
-    // Get business configuration
-    const business = await prisma.business.findUnique({
-      where: { id: session.businessId },
-      include: { configurations: true },
-    });
-
-    openaiWs.on('open', async () => {
-      console.log('OpenAI WebSocket connected for call:', session.callSid);
-
-      // Get system instructions from configuration
-      const systemInstructions = await this.buildSystemInstructions(
-        session.businessId
-      );
-
-      // Initialize session with configuration
-      openaiWs.send(
-        JSON.stringify({
-          type: 'session.update',
-          session: {
-            modalities: ['text', 'audio'],
-            instructions: systemInstructions,
-            voice: 'alloy',
-            input_audio_format: 'g711_ulaw',
-            output_audio_format: 'g711_ulaw',
-            input_audio_transcription: {
-              model: 'whisper-1',
-            },
-            turn_detection: {
-              type: 'server_vad',
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 500,
-            },
-            tools: [
-              {
-                type: 'function',
-                name: 'query_knowledge_base',
-                description:
-                  'Search the company knowledge base for relevant information',
-                parameters: {
-                  type: 'object',
-                  properties: {
-                    query: {
-                      type: 'string',
-                      description: 'The search query',
-                    },
-                  },
-                  required: ['query'],
-                },
-              },
-            ],
-            temperature: 0.7,
-            max_response_output_tokens: 4096,
-          },
-        })
-      );
-    });
-
-    openaiWs.on('message', async (data: WebSocket.Data) => {
-      try {
-        const response = JSON.parse(data.toString());
-
-        switch (response.type) {
-          case 'response.audio.delta':
-            // Forward audio to Twilio
-            if (session.ws.readyState === WebSocket.OPEN) {
-              session.ws.send(
-                JSON.stringify({
-                  event: 'media',
-                  streamSid: session.callSid,
-                  media: {
-                    payload: response.delta,
-                  },
-                })
-              );
-            }
-            break;
-
-          case 'conversation.item.input_audio_transcription.completed':
-            // Store user transcript
-            session.transcript.push(`User: ${response.transcript}`);
-            break;
-
-          case 'response.done':
-            // Store AI response transcript
-            if (response.response?.output) {
-              const aiText = response.response.output
-                .map((o: any) => o.content?.[0]?.transcript || '')
-                .join(' ');
-              if (aiText) {
-                session.transcript.push(`AI: ${aiText}`);
-              }
-            }
-            break;
-
-          case 'response.function_call_arguments.done':
-            // Handle function calls (RAG queries)
-            await this.handleFunctionCall(session, response);
-            break;
-
-          case 'error':
-            console.error('OpenAI error:', response.error);
-            break;
-        }
-      } catch (error) {
-        console.error('Error processing OpenAI message:', error);
-      }
-    });
-
-    openaiWs.on('error', (error) => {
-      console.error('OpenAI WebSocket error:', error);
-    });
-
-    openaiWs.on('close', () => {
-      console.log('OpenAI WebSocket closed for call:', session.callSid);
-    });
+    // TODO: Implement OpenAI WebSocket initialization
+    // Hint: Check OpenAI Real-time API docs for session.update structure
+    throw new Error('Not implemented: initializeOpenAI');
   }
 
   /**
-   * Build system instructions with RAG context
+   * TODO: Build system instructions with RAG context
+   *
+   * Steps:
+   * 1. Query database for business using businessId
+   * 2. Include configurations in the query
+   * 3. Extract 'ai_personality' and 'greeting_message' from configurations
+   * 4. Build a prompt that includes:
+   *    - Business name and domain
+   *    - Personality traits
+   *    - Greeting message
+   *    - Guidelines for behavior
+   *    - Instructions to use query_knowledge_base function
+   * 5. Return the complete system prompt string
+   *
+   * @param businessId - The business identifier
+   * @returns Promise<string> - System instructions for OpenAI
    */
   private async buildSystemInstructions(businessId: string): Promise<string> {
-    const business = await prisma.business.findUnique({
-      where: { id: businessId },
-      include: { configurations: true },
-    });
-
-    if (!business) {
-      return 'You are a helpful customer service agent.';
-    }
-
-    // Get personality and greeting from configuration
-    const personalityConfig = business.configurations.find(
-      (c) => c.key === 'ai_personality'
-    );
-    const greetingConfig = business.configurations.find(
-      (c) => c.key === 'greeting_message'
-    );
-
-    const personality =
-      (personalityConfig?.value as any)?.text ||
-      'professional and helpful';
-    const greeting =
-      (greetingConfig?.value as any)?.text ||
-      `Hello! I'm calling from ${business.name}. How can I help you today?`;
-
-    return `You are an AI customer service agent for ${business.name} in the ${business.domain} industry.
-
-Your personality: ${personality}
-
-Greeting: ${greeting}
-
-Guidelines:
-- Be conversational and natural
-- Listen carefully to customer needs
-- Use the query_knowledge_base function to search for specific information when needed
-- Keep responses concise and clear
-- Show empathy and understanding
-- If you don't know something, use the knowledge base or admit you need to transfer to a human
-- End calls professionally and ensure customer satisfaction
-
-Remember: You're representing ${business.name}, so maintain their brand voice and values.`;
+    // TODO: Implement system instructions builder
+    throw new Error('Not implemented: buildSystemInstructions');
   }
 
   /**
-   * Handle function calls from OpenAI (RAG queries)
+   * TODO: Handle function calls from OpenAI (RAG queries)
+   *
+   * Steps:
+   * 1. Check if response.name === 'query_knowledge_base'
+   * 2. Parse response.arguments to get the query string
+   * 3. Use vectorService.queryContent() to search knowledge base
+   *    - Pass query, session.businessId, and topK (e.g., 3)
+   * 4. Format the results into a readable string
+   * 5. Send back to OpenAI using 'conversation.item.create' with type 'function_call_output'
+   * 6. Include the call_id from the original function call
+   * 7. Trigger response generation with 'response.create'
+   *
+   * @param session - The realtime session
+   * @param response - The function call response from OpenAI
    */
   private async handleFunctionCall(
     session: RealtimeSession,
     response: any
   ) {
-    if (response.name === 'query_knowledge_base') {
-      const args = JSON.parse(response.arguments);
-      const query = args.query;
-
-      // Query vector database
-      const results = await vectorService.queryContent(
-        query,
-        session.businessId,
-        3
-      );
-
-      // Format results
-      const knowledgeContext = results
-        .map(
-          (r: any, i: number) =>
-            `Result ${i + 1}: ${r.metadata?.title}\n${r.metadata?.content}`
-        )
-        .join('\n\n');
-
-      // Send results back to OpenAI
-      if (session.openaiWs?.readyState === WebSocket.OPEN) {
-        session.openaiWs.send(
-          JSON.stringify({
-            type: 'conversation.item.create',
-            item: {
-              type: 'function_call_output',
-              call_id: response.call_id,
-              output: JSON.stringify({
-                knowledge: knowledgeContext || 'No relevant information found.',
-              }),
-            },
-          })
-        );
-
-        // Trigger response generation
-        session.openaiWs.send(
-          JSON.stringify({
-            type: 'response.create',
-          })
-        );
-      }
-    }
+    // TODO: Implement function call handler
+    throw new Error('Not implemented: handleFunctionCall');
   }
 
   /**
-   * Handle incoming audio from Twilio
+   * TODO: Handle incoming audio from Twilio
+   *
+   * Steps:
+   * 1. Get session from this.sessions using callSid
+   * 2. Check if session exists and OpenAI WebSocket is open
+   * 3. Send audio to OpenAI using 'input_audio_buffer.append' event
+   * 4. Include the audioPayload in the audio field
+   *
+   * @param callSid - The call SID
+   * @param audioPayload - Base64 encoded audio from Twilio
    */
   handleIncomingAudio(callSid: string, audioPayload: string) {
-    const session = this.sessions.get(callSid);
-    if (session?.openaiWs?.readyState === WebSocket.OPEN) {
-      session.openaiWs.send(
-        JSON.stringify({
-          type: 'input_audio_buffer.append',
-          audio: audioPayload,
-        })
-      );
-    }
+    // TODO: Implement audio forwarding to OpenAI
+    throw new Error('Not implemented: handleIncomingAudio');
   }
 
   /**
-   * End a session
+   * TODO: End a session
+   *
+   * Steps:
+   * 1. Get session from this.sessions
+   * 2. Update call log in database with final transcript
+   *    - Join transcript array with newlines
+   * 3. Close the OpenAI WebSocket connection
+   * 4. Remove session from this.sessions Map
+   *
+   * @param callSid - The call SID to end
    */
   async endSession(callSid: string) {
-    const session = this.sessions.get(callSid);
-    if (session) {
-      // Save transcript to database
-      await prisma.callLog.update({
-        where: { callSid },
-        data: {
-          transcript: session.transcript.join('\n'),
-        },
-      });
-
-      // Close OpenAI connection
-      session.openaiWs?.close();
-
-      // Remove session
-      this.sessions.delete(callSid);
-    }
+    // TODO: Implement session cleanup
+    throw new Error('Not implemented: endSession');
   }
 
   /**

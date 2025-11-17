@@ -1,27 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+/**
+ * TODO: Handle Twilio call status updates
+ *
+ * Twilio sends status updates during and after a call (ringing, in-progress, completed, etc.)
+ *
+ * Steps to implement:
+ * 1. Parse form data to get CallSid, CallStatus, CallDuration, RecordingUrl
+ * 2. Update the call log in database using callSid
+ * 3. Update fields: status, duration (parse to int), recordingUrl
+ * 4. Return success JSON response
+ * 5. Handle errors and return appropriate error response
+ *
+ * @param req - Next.js request object
+ * @returns NextResponse with JSON
+ */
 export async function POST(req: NextRequest) {
-  try {
-    const formData = await req.formData();
-    const callSid = formData.get('CallSid') as string;
-    const callStatus = formData.get('CallStatus') as string;
-    const callDuration = formData.get('CallDuration') as string;
-    const recordingUrl = formData.get('RecordingUrl') as string | null;
-
-    // Update call log
-    await prisma.callLog.update({
-      where: { callSid },
-      data: {
-        status: callStatus,
-        duration: callDuration ? parseInt(callDuration) : undefined,
-        recordingUrl: recordingUrl || undefined,
-      },
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Twilio status callback error:', error);
-    return NextResponse.json({ error: 'Failed to process callback' }, { status: 500 });
-  }
+  // TODO: Implement status callback handler
+  throw new Error('Not implemented: POST /api/twilio/status');
 }
