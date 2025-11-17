@@ -18,14 +18,24 @@ interface RAGContent {
   createdAt: string;
 }
 
+interface BulkImportItem {
+  title: string;
+  category: string;
+  content: string;
+  metadata?: any;
+}
+
 export default function RAGPage() {
   const [contents, setContents] = useState<RAGContent[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [selectedBusiness, setSelectedBusiness] = useState('');
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
   const [currentContent, setCurrentContent] = useState<Partial<RAGContent>>({});
   const [saving, setSaving] = useState(false);
+  const [bulkImporting, setBulkImporting] = useState(false);
+  const [bulkJsonText, setBulkJsonText] = useState('');
 
   // Filter
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -109,10 +119,8 @@ export default function RAGPage() {
         category: currentContent.category,
         metadata: currentContent.metadata || {},
         businessId: selectedBusiness,
-        ...(isUpdate && { id: currentContent.id }), // Only add id if updating
+        ...(isUpdate && { id: currentContent.id }),
       };
-  
-      console.log(`${isUpdate ? 'Updating' : 'Creating'} content:`, payload);
   
       const res = await fetch('/api/rag', {
         method,
@@ -136,6 +144,80 @@ export default function RAGPage() {
       alert(error.message || 'Failed to save content. Please try again.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleBulkImport = async () => {
+    if (!bulkJsonText.trim()) {
+      alert('Please enter JSON data');
+      return;
+    }
+
+    if (!selectedBusiness) {
+      alert('Please select a business');
+      return;
+    }
+
+    setBulkImporting(true);
+
+    try {
+      // Parse and validate JSON
+      let items: BulkImportItem[];
+      
+      try {
+        const parsed = JSON.parse(bulkJsonText);
+        items = Array.isArray(parsed) ? parsed : [parsed];
+      } catch (parseError) {
+        throw new Error('Invalid JSON format. Please check your syntax.');
+      }
+
+      // Validate each item
+      const invalidItems = items.filter((item, index) => {
+        if (!item.title || !item.content || !item.category) {
+          console.error(`Item ${index + 1} is missing required fields:`, item);
+          return true;
+        }
+        return false;
+      });
+
+      if (invalidItems.length > 0) {
+        throw new Error(
+          `${invalidItems.length} item(s) are missing required fields (title, content, category). Check console for details.`
+        );
+      }
+
+      console.log(`Importing ${items.length} items...`);
+
+      // Call bulk import API
+      const res = await fetch('/api/rag/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessId: selectedBusiness,
+          items,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to import content');
+      }
+
+      alert(
+        `Successfully imported ${data.imported} out of ${items.length} items!\n` +
+        (data.failed > 0 ? `Failed: ${data.failed}` : '')
+      );
+      
+      setShowBulkModal(false);
+      setBulkJsonText('');
+      await fetchContents();
+
+    } catch (error: any) {
+      console.error('Bulk import error:', error);
+      alert(error.message || 'Failed to import content. Please try again.');
+    } finally {
+      setBulkImporting(false);
     }
   };
 
@@ -173,6 +255,24 @@ export default function RAGPage() {
 
   const activeContents = contents.filter(c => c.isActive);
   const totalCategories = new Set(contents.map(c => c.category)).size;
+
+  const exampleJson = `[
+  {
+    "title": "Business Hours",
+    "category": "Hours",
+    "content": "We are open Monday-Friday 9am-5pm EST. Closed on weekends and major holidays."
+  },
+  {
+    "title": "Return Policy",
+    "category": "Policy",
+    "content": "We accept returns within 30 days of purchase with original receipt. Item must be in original condition."
+  },
+  {
+    "title": "Shipping Information",
+    "category": "FAQ",
+    "content": "We offer free shipping on orders over $50. Standard shipping takes 3-5 business days."
+  }
+]`;
 
   return (
     <AdminLayout>
@@ -239,7 +339,7 @@ export default function RAGPage() {
               </div>
             </div>
 
-            {/* Filter & Add Button */}
+            {/* Filter & Add Buttons */}
             <div className="bg-white rounded-lg shadow-md p-6 mb-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex-1">
@@ -257,15 +357,23 @@ export default function RAGPage() {
                   </select>
                 </div>
 
-                <button
-                  onClick={() => {
-                    setCurrentContent({ isActive: true });
-                    setShowModal(true);
-                  }}
-                  className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 whitespace-nowrap"
-                >
-                  + Add Content
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowBulkModal(true)}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 whitespace-nowrap"
+                  >
+                    📦 Bulk Import
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCurrentContent({ isActive: true });
+                      setShowModal(true);
+                    }}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 whitespace-nowrap"
+                  >
+                    + Add Content
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -288,15 +396,23 @@ export default function RAGPage() {
                   <p className="text-gray-600 mb-6">
                     Add your first piece of knowledge to train the AI agent for this business
                   </p>
-                  <button
-                    onClick={() => {
-                      setCurrentContent({ isActive: true });
-                      setShowModal(true);
-                    }}
-                    className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-                  >
-                    Add First Content
-                  </button>
+                  <div className="flex gap-3 justify-center">
+                    <button
+                      onClick={() => setShowBulkModal(true)}
+                      className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                    >
+                      Bulk Import
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCurrentContent({ isActive: true });
+                        setShowModal(true);
+                      }}
+                      className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                    >
+                      Add First Content
+                    </button>
+                  </div>
                 </div>
               ) : (
                 contents.map((content) => (
@@ -466,6 +582,77 @@ export default function RAGPage() {
                   className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Import Modal */}
+        {showBulkModal && (
+          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  📦 Bulk Import Knowledge Base Content
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  For: {businesses.find(b => b.id === selectedBusiness)?.name}
+                </p>
+              </div>
+
+              <div className="px-6 py-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    JSON Data <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={bulkJsonText}
+                    onChange={(e) => setBulkJsonText(e.target.value)}
+                    rows={12}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-sm"
+                    placeholder={exampleJson}
+                  />
+                  <p className="mt-2 text-xs text-gray-600">
+                    Paste JSON array with objects containing: <code className="bg-gray-100 px-1 py-0.5 rounded">title</code>, <code className="bg-gray-100 px-1 py-0.5 rounded">category</code>, and <code className="bg-gray-100 px-1 py-0.5 rounded">content</code> fields.
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-blue-900 mb-2">📋 Example Format:</h4>
+                  <pre className="text-xs bg-white p-3 rounded border border-blue-200 overflow-x-auto">
+{exampleJson}
+                  </pre>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-yellow-900 mb-1">⚠️ Important:</h4>
+                  <ul className="text-xs text-yellow-800 space-y-1 ml-4 list-disc">
+                    <li>Each item must have: <code>title</code>, <code>category</code>, and <code>content</code></li>
+                    <li>Valid categories: {categories.join(', ')}</li>
+                    <li>All imported content will be marked as active</li>
+                    <li>Embeddings will be generated automatically</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowBulkModal(false);
+                    setBulkJsonText('');
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                  disabled={bulkImporting}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBulkImport}
+                  disabled={bulkImporting || !bulkJsonText.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {bulkImporting ? 'Importing...' : 'Import'}
                 </button>
               </div>
             </div>
