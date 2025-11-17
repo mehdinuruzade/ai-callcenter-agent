@@ -1,64 +1,192 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-/**
- * TODO: GET - Get all configurations for a business
- *
- * Steps:
- * 1. Get businessId from query parameters
- * 2. Validate businessId exists
- * 3. Query database for all Configuration records for that business
- * 4. Convert array to key-value object using reduce()
- * 5. Return JSON object of configurations
- *
- * @param req - Next.js request object
- * @returns NextResponse with JSON object of configurations
- */
+// GET - Get all configurations for a business
 export async function GET(req: NextRequest) {
-  // TODO: Implement GET handler
-  throw new Error('Not implemented: GET /api/config');
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const businessId = searchParams.get('businessId');
+
+    if (!businessId) {
+      return NextResponse.json(
+        { error: 'Business ID required' },
+        { status: 400 }
+      );
+    }
+
+    // Verify business ownership
+    const business = await prisma.business.findFirst({
+      where: {
+        id: businessId,
+        userId: session.user.id,
+      },
+    });
+
+    if (!business) {
+      return NextResponse.json(
+        { error: 'Business not found' },
+        { status: 404 }
+      );
+    }
+
+    // Get all configurations
+    const configs = await prisma.configuration.findMany({
+      where: { businessId },
+      orderBy: { key: 'asc' },
+    });
+
+    // Convert to key-value object for easier frontend use
+    const configObject: Record<string, unknown> = {};
+    configs.forEach((config: { key: string; value: unknown }) => {
+      configObject[config.key] = config.value;
+    });
+
+    return NextResponse.json({
+      configs: configObject,
+      raw: configs, // Also send raw for editing
+    });
+  } catch (error) {
+    console.error('Error fetching configs:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch configurations' },
+      { status: 500 }
+    );
+  }
 }
 
-/**
- * TODO: POST - Create or update a configuration
- *
- * Steps:
- * 1. Parse JSON body (businessId, key, value, type)
- * 2. Validate required fields
- * 3. Use prisma.configuration.upsert() to create or update
- *    - where: { businessId_key: { businessId, key } }
- *    - update: { value, type }
- *    - create: { businessId, key, value, type }
- * 4. Return the created/updated configuration as JSON
- *
- * Configuration keys examples:
- * - 'ai_personality': { text: "professional and helpful" }
- * - 'greeting_message': { text: "Hello! How can I help?" }
- * - 'max_call_duration': { seconds: 300 }
- *
- * @param req - Next.js request object
- * @returns NextResponse with configuration
- */
+// POST - Create or update configuration
 export async function POST(req: NextRequest) {
-  // TODO: Implement POST handler
-  throw new Error('Not implemented: POST /api/config');
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { businessId, key, value, type } = body;
+
+    if (!businessId || !key || value === undefined || !type) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    // Verify business ownership
+    const business = await prisma.business.findFirst({
+      where: {
+        id: businessId,
+        userId: session.user.id,
+      },
+    });
+
+    if (!business) {
+      return NextResponse.json(
+        { error: 'Business not found' },
+        { status: 404 }
+      );
+    }
+
+    // Upsert configuration
+    const config = await prisma.configuration.upsert({
+      where: {
+        businessId_key: {
+          businessId,
+          key,
+        },
+      },
+      update: {
+        value,
+        type,
+      },
+      create: {
+        businessId,
+        key,
+        value,
+        type,
+      },
+    });
+
+    return NextResponse.json(config);
+  } catch (error) {
+    console.error('Error saving config:', error);
+    return NextResponse.json(
+      { error: 'Failed to save configuration' },
+      { status: 500 }
+    );
+  }
 }
 
-/**
- * TODO: PUT - Bulk update configurations
- *
- * Steps:
- * 1. Parse JSON body (businessId, configurations object)
- * 2. Validate required fields
- * 3. Loop through configurations object
- * 4. For each key-value pair, use prisma.configuration.upsert()
- * 5. Use Promise.all() to run updates in parallel
- * 6. Return success response
- *
- * @param req - Next.js request object
- * @returns NextResponse with success message
- */
+// PUT - Batch update configurations
 export async function PUT(req: NextRequest) {
-  // TODO: Implement PUT handler
-  throw new Error('Not implemented: PUT /api/config');
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { businessId, configs } = body;
+
+    if (!businessId || !configs) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    // Verify business ownership
+    const business = await prisma.business.findFirst({
+      where: {
+        id: businessId,
+        userId: session.user.id,
+      },
+    });
+
+    if (!business) {
+      return NextResponse.json(
+        { error: 'Business not found' },
+        { status: 404 }
+      );
+    }
+
+    // Update all configs in transaction
+    await prisma.$transaction(
+      Object.entries(configs).map(([key, config]: [string, any]) =>
+        prisma.configuration.upsert({
+          where: {
+            businessId_key: {
+              businessId,
+              key,
+            },
+          },
+          update: {
+            value: config.value,
+            type: config.type,
+          },
+          create: {
+            businessId,
+            key,
+            value: config.value,
+            type: config.type,
+          },
+        })
+      )
+    );
+
+    return NextResponse.json({ message: 'Configurations updated' });
+  } catch (error) {
+    console.error('Error updating configs:', error);
+    return NextResponse.json(
+      { error: 'Failed to update configurations' },
+      { status: 500 }
+    );
+  }
 }

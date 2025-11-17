@@ -1,78 +1,151 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { vectorService } from '@/lib/vector-service';
+import { vectorService } from '@/lib/vector-service-supabase';
 
-/**
- * TODO: GET - List all RAG contents for a business
- *
- * Steps:
- * 1. Get businessId from query parameters
- * 2. Validate businessId exists
- * 3. Query database for all RAGContent records for that business
- * 4. Order by createdAt descending
- * 5. Return JSON array of contents
- *
- * @param req - Next.js request object
- * @returns NextResponse with JSON array of RAG contents
- */
+// GET - List all RAG contents
 export async function GET(req: NextRequest) {
-  // TODO: Implement GET handler
-  throw new Error('Not implemented: GET /api/rag');
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const businessId = searchParams.get('businessId');
+
+    const where: any = {};
+    
+    // Filter by user's businesses
+    const businesses = await prisma.business.findMany({
+      where: { userId: session.user.id },
+      select: { id: true },
+    });
+    
+    const businessIds = businesses.map((b: { id: string }) => b.id);
+    where.businessId = { in: businessIds };
+
+    if (businessId) {
+      where.businessId = businessId;
+    }
+
+    const contents = await prisma.rAGContent.findMany({
+      where,
+      include: {
+        business: {
+          select: { id: true, name: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return NextResponse.json(contents);
+  } catch (error) {
+    console.error('Error fetching RAG contents:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch contents' },
+      { status: 500 }
+    );
+  }
 }
 
-/**
- * TODO: POST - Create new RAG content
- *
- * Steps:
- * 1. Parse JSON body (businessId, title, content, category, metadata)
- * 2. Validate required fields
- * 3. Create record in database using prisma.rAGContent.create()
- * 4. Use vectorService.upsertContent() to add to Pinecone
- *    - Use the database record ID as the vector ID
- *    - Include title, content, category in metadata
- * 5. Update database record with vectorId
- * 6. Return the created content as JSON
- *
- * @param req - Next.js request object
- * @returns NextResponse with created RAG content
- */
+// POST - Create new RAG content with embedding
 export async function POST(req: NextRequest) {
-  // TODO: Implement POST handler
-  throw new Error('Not implemented: POST /api/rag');
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { title, content, category, businessId, metadata } = body;
+
+    if (!title || !content || !category || !businessId) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    // Verify business ownership
+    const business = await prisma.business.findFirst({
+      where: {
+        id: businessId,
+        userId: session.user.id,
+      },
+    });
+
+    if (!business) {
+      return NextResponse.json(
+        { error: 'Business not found' },
+        { status: 404 }
+      );
+    }
+
+    // Store with embedding
+    await vectorService.storeContent({
+      title,
+      content,
+      category,
+      businessId,
+      metadata,
+    });
+
+    return NextResponse.json(
+      { message: 'Content created successfully' },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error('Error creating RAG content:', error);
+    return NextResponse.json(
+      { error: 'Failed to create content' },
+      { status: 500 }
+    );
+  }
 }
 
-/**
- * TODO: PUT - Update existing RAG content
- *
- * Steps:
- * 1. Parse JSON body (id, title, content, category, metadata)
- * 2. Validate required fields
- * 3. Update database record using prisma.rAGContent.update()
- * 4. Use vectorService.updateContent() to update in Pinecone
- * 5. Return the updated content as JSON
- *
- * @param req - Next.js request object
- * @returns NextResponse with updated RAG content
- */
-export async function PUT(req: NextRequest) {
-  // TODO: Implement PUT handler
-  throw new Error('Not implemented: PUT /api/rag');
-}
-
-/**
- * TODO: DELETE - Remove RAG content
- *
- * Steps:
- * 1. Get id from query parameters
- * 2. Find the content in database to get vectorId
- * 3. Delete from Pinecone using vectorService.deleteContent()
- * 4. Delete from database using prisma.rAGContent.delete()
- * 5. Return success response
- *
- * @param req - Next.js request object
- * @returns NextResponse with success message
- */
+// DELETE - Delete RAG content
 export async function DELETE(req: NextRequest) {
-  // TODO: Implement DELETE handler
-  throw new Error('Not implemented: DELETE /api/rag');
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Content ID required' },
+        { status: 400 }
+      );
+    }
+
+    // Verify ownership
+    const content = await prisma.rAGContent.findUnique({
+      where: { id },
+      include: { business: true },
+    });
+
+    if (!content || content.business.userId !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Content not found' },
+        { status: 404 }
+      );
+    }
+
+    await prisma.rAGContent.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ message: 'Content deleted' });
+  } catch (error) {
+    console.error('Error deleting RAG content:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete content' },
+      { status: 500 }
+    );
+  }
 }

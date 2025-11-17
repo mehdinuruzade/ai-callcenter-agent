@@ -90,6 +90,7 @@ export default function BusinessesPage() {
                 <option value="healthcare">Healthcare</option>
                 <option value="retail">Retail</option>
                 <option value="restaurant">Restaurant</option>
+                <option value="finance">Finance</option>
               </select>
 
               <div className="flex justify-end space-x-3 mt-4">
