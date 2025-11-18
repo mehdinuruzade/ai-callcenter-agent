@@ -55,41 +55,6 @@ app.prepare().then(async () => {
   console.log('🔧 WebSocket Server created');
   console.log('   Path:', '/api/twilio/stream');
 
-  // Add this listener to see ALL events
-  wss.on('connection', function(ws, req) {
-    console.log('\n⚡ ========== WS CONNECTION EVENT FIRED ==========');
-    console.log('This log should appear first!');
-    console.log('Arguments count:', arguments.length);
-    console.log('WebSocket readyState:', ws.readyState);
-    console.log('Request URL:', req.url);
-    console.log('====================================================\n');
-    
-    // Now your actual handler code here...
-    let messageCount = 0;
-    
-    ws.on('message', function(message) {
-      messageCount++;
-      console.log(`\n📨 MESSAGE #${messageCount}`);
-      console.log('Message:', message.toString());
-      console.log('============================\n');
-    });
-    
-    ws.on('error', function(error) {
-      console.error('\n❌ WS ERROR:', error);
-      console.error('============================\n');
-    });
-    
-    ws.on('close', function(code, reason) {
-      console.log('\n🔌 WS CLOSE');
-      console.log('Code:', code);
-      console.log('Reason:', reason.toString());
-      console.log('Messages received:', messageCount);
-      console.log('============================\n');
-    });
-    
-    console.log('✅ Event handlers attached\n');
-  });
-
   wss.on('error', function(error) {
     console.error('\n❌ WSS SERVER ERROR:', error);
     console.error('============================\n');

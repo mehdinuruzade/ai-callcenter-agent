@@ -8,6 +8,14 @@ interface SessionConfig {
   systemPrompt: string;
   voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
   temperature?: number;
+  maxTokens?: number;
+  enableFunctionCalls?: boolean;
+  enableTranscription?: boolean;
+  transcriptionModel?: string;
+  turnDetectionType?: string;
+  vadThreshold?: number;
+  vadPrefixPadding?: number;
+  vadSilenceDuration?: number;
 }
 
 interface TranscriptItem {
@@ -24,16 +32,24 @@ export class OpenAIRealtimeService extends EventEmitter {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 3;
   private max_tokens: number = 4096;
-  private enableTranscription: boolean = false;
+  private enableTranscription: boolean = true;
   private transcriptionModel: string = 'whisper-1';
   private turnDetectionType: string = 'server_vad';
   private vadThreshold: number = 0.5;
   private vadPrefixPadding: number = 300;
   private vadSilenceDuration: number = 500;
-  private enableFunctionCalls: boolean = false;
+  private enableFunctionCalls: boolean = true;
   constructor(config: SessionConfig) {
     super();
     this.config = config;
+    this.max_tokens = config.maxTokens ?? this.max_tokens;
+    this.enableFunctionCalls = config.enableFunctionCalls ?? this.enableFunctionCalls;
+    this.enableTranscription = config.enableTranscription ?? this.enableTranscription;
+    this.transcriptionModel = config.transcriptionModel ?? this.transcriptionModel;
+    this.turnDetectionType = config.turnDetectionType ?? this.turnDetectionType;
+    this.vadThreshold = config.vadThreshold ?? this.vadThreshold;
+    this.vadPrefixPadding = config.vadPrefixPadding ?? this.vadPrefixPadding;
+    this.vadSilenceDuration = config.vadSilenceDuration ?? this.vadSilenceDuration;
   }
 
   async connect(): Promise<void> {

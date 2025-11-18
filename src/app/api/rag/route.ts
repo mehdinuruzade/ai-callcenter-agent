@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const businessId = searchParams.get('businessId');
+    const category = searchParams.get('category');
 
     const where: any = {};
     
@@ -28,6 +29,10 @@ export async function GET(req: NextRequest) {
 
     if (businessId) {
       where.businessId = businessId;
+    }
+
+    if (category && category !== 'all') {
+      where.category = category;
     }
 
     const contents = await prisma.rAGContent.findMany({
@@ -206,19 +211,7 @@ export async function PUT(req: NextRequest) {
 
     // Update embedding in vector database
     try {
-      // Delete old vector from Supabase
-      // You need to implement deleteContent in your vectorService
-      await vectorService.deleteContent(id);
-      
-      // Store new vector with updated content
-      await vectorService.storeContent({
-        id: updatedContent.id,
-        title: updatedContent.title,
-        content: updatedContent.content,
-        category: updatedContent.category,
-        businessId: updatedContent.businessId,
-        metadata: updatedContent.metadata,
-      });
+      await vectorService.updateEmbedding(updatedContent.id, updatedContent.content);
     } catch (vectorError) {
       console.error('Error updating vector:', vectorError);
       // If vector update fails, revert database changes
