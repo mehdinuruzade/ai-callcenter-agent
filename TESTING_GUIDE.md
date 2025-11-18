@@ -19,9 +19,6 @@ Before starting, ensure you have:
 # Check Node.js version (need 18+)
 node --version
 
-# Check PostgreSQL is running
-psql --version
-
 # Check if ngrok is installed
 ngrok version
 
@@ -29,6 +26,11 @@ ngrok version
 # Download from https://ngrok.com/download
 # Or: brew install ngrok (macOS)
 ```
+
+**Required accounts:**
+- Supabase account (free tier: https://supabase.com)
+- OpenAI API key (https://platform.openai.com)
+- Twilio account with phone number (https://console.twilio.com)
 
 ---
 
@@ -41,7 +43,15 @@ cd ai-callcenter-agent
 npm install
 ```
 
-### 2. Setup Environment Variables
+### 2. Setup Supabase
+
+Follow the complete guide in `SUPABASE_SETUP.md`:
+
+1. Create Supabase project at https://supabase.com
+2. Enable **pgvector** extension (Database → Extensions)
+3. Copy your database connection string (Project Settings → Database)
+
+### 3. Setup Environment Variables
 
 ```bash
 cp .env.example .env
@@ -49,8 +59,8 @@ cp .env.example .env
 
 Edit `.env`:
 ```env
-# Database
-DATABASE_URL="postgresql://user:password@localhost:5432/callcenter?schema=public"
+# Database (Supabase PostgreSQL with pgvector)
+DATABASE_URL="postgresql://postgres.[project-ref]:[PASSWORD]@aws-0-[region].pooler.supabase.com:6543/postgres"
 
 # Twilio (get from https://console.twilio.com)
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxx
@@ -60,45 +70,48 @@ TWILIO_PHONE_NUMBER=+1234567890
 # OpenAI (get from https://platform.openai.com)
 OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxx
 
-# Pinecone (get from https://app.pinecone.io)
-PINECONE_API_KEY=xxxxxxxxxxxxx
-PINECONE_INDEX_NAME=callcenter-rag
-
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 NODE_ENV=development
 ```
 
-### 3. Setup Database
+### 4. Setup Database
 
 ```bash
 # Generate Prisma client
-npm run prisma:generate
+npx prisma generate
 
-# Run migrations
-npm run prisma:migrate
+# Run migrations to Supabase
+npx prisma migrate dev --name init
 
 # Open Prisma Studio (optional - great for viewing data)
 npm run prisma:studio
 # Opens at http://localhost:5555
 ```
 
-### 4. Create Pinecone Index
+### 5. Create Test Data
 
-1. Go to https://app.pinecone.io
-2. Click "Create Index"
-3. Settings:
-   - **Name**: `callcenter-rag`
-   - **Dimensions**: `1536`
-   - **Metric**: `cosine`
-   - **Cloud**: AWS (free tier)
-   - **Region**: us-east-1 (or closest to you)
+Run the setup script to create test business, phone number, and configurations:
+
+```bash
+npm run setup-test
+```
+
+This will create:
+- Test user (test@example.com)
+- Test business (Test Coffee Shop)
+- Your Twilio phone number in the database
+- Default AI personality and greeting configurations
+
+**Important:** Make sure `TWILIO_PHONE_NUMBER` in `.env` matches your actual Twilio number!
 
 ---
 
 ## 🧪 Phase 1: Testing Vector Service & RAG
 
-**What you're testing:** OpenAI embeddings + Pinecone vector search
+**What you're testing:** OpenAI embeddings + Supabase pgvector similarity search
+
+**Note:** You'll need to implement the TODOs in `src/lib/vector-service.ts` first!
 
 ### Test 1: Vector Service Functions
 
@@ -118,27 +131,27 @@ async function testVectorService() {
 
   // Test 2: Upsert content
   console.log('\n2️⃣ Testing upsertContent...');
-  const result = await vectorService.upsertContent(
+  await vectorService.upsertContent(
     'test-1',
     'Our product costs $99 per month and includes 24/7 support.',
     {
-      businessId: 'test-business',
+      businessId: 'test-business-1',
       title: 'Pricing Information',
       category: 'FAQ'
     }
   );
-  console.log('✅ Content upserted:', result.id);
+  console.log('✅ Content upserted: test-1');
 
   // Test 3: Query content
   console.log('\n3️⃣ Testing queryContent...');
   const results = await vectorService.queryContent(
     'how much does it cost',
-    'test-business',
+    'test-business-1',
     3
   );
   console.log(`✅ Found ${results.length} results`);
   results.forEach((r, i) => {
-    console.log(`   ${i + 1}. ${r.metadata?.title} (score: ${r.score})`);
+    console.log(`   ${i + 1}. ${r.title} (distance: ${r.distance?.toFixed(4)})`);
   });
 
   // Test 4: Delete content
@@ -175,13 +188,15 @@ npx tsx src/lib/__test-vector.ts
 
 3️⃣ Testing queryContent...
 ✅ Found 1 results
-   1. Pricing Information (score: 0.89)
+   1. Pricing Information (distance: 0.1234)
 
 4️⃣ Testing deleteContent...
 ✅ Content deleted
 
 🎉 All vector service tests passed!
 ```
+
+**Note:** Lower distance = more similar. Cosine distance of 0 = identical.
 
 ### Test 2: RAG API Routes
 
@@ -331,76 +346,28 @@ NEXT_PUBLIC_APP_URL=https://abc123.ngrok-free.app
 
 ### Create Test Data
 
-**Add a business and phone number:**
+If you haven't already, run the setup script:
 
-```typescript
-// Run in Prisma Studio or create a seed script
-// src/lib/__test-data.ts
-
-import { prisma } from './prisma';
-
-async function createTestData() {
-  // Create business
-  const business = await prisma.business.create({
-    data: {
-      name: 'Test Coffee Shop',
-      domain: 'restaurant',
-      description: 'A test coffee shop',
-      userId: 'test-user' // You'll need to create a user first
-    }
-  });
-
-  console.log('✅ Business created:', business.id);
-
-  // Add phone number
-  const phoneNumber = await prisma.phoneNumber.create({
-    data: {
-      number: '+1234567890', // Your Twilio number
-      friendlyName: 'Main Line',
-      businessId: business.id
-    }
-  });
-
-  console.log('✅ Phone number added:', phoneNumber.number);
-
-  // Add configuration
-  await prisma.configuration.createMany({
-    data: [
-      {
-        businessId: business.id,
-        key: 'ai_personality',
-        value: { text: 'friendly, warm, and helpful' },
-        type: 'json'
-      },
-      {
-        businessId: business.id,
-        key: 'greeting_message',
-        value: { text: 'Hello! Thanks for calling Test Coffee Shop. How can I help you today?' },
-        type: 'json'
-      }
-    ]
-  });
-
-  console.log('✅ Configurations added');
-
-  // Add some RAG content (after implementing vector service)
-  const content = await prisma.rAGContent.create({
-    data: {
-      businessId: business.id,
-      title: 'Menu Items',
-      content: 'We serve espresso ($3), latte ($4), and cappuccino ($4.50). We also have pastries and sandwiches.',
-      category: 'FAQ'
-    }
-  });
-
-  console.log('✅ RAG content added:', content.id);
-
-  // Don't forget to add to Pinecone too!
-  // (This requires your vector service to be implemented)
-}
-
-createTestData().catch(console.error);
+```bash
+npm run setup-test
 ```
+
+This creates:
+- Test user
+- Test Coffee Shop business
+- Phone number mapping to your Twilio number
+- Default configurations
+
+**Verify in Prisma Studio:**
+
+```bash
+npm run prisma:studio
+```
+
+Check that you have:
+- Business with id: `test-business-1`
+- PhoneNumber matching your TWILIO_PHONE_NUMBER
+- Configurations for `ai_personality` and `greeting_message`
 
 ### Make a Test Call
 
@@ -412,17 +379,23 @@ createTestData().catch(console.error);
 
 **What to watch:**
 
-**Terminal 1 (Next.js dev server):**
+**Terminal 1 (Custom server logs):**
 ```
-New Twilio WebSocket connection
-Session started: CAxxxxxxxxxxxxx
-RealtimeClient connected for call: CAxxxxxxxxxxxxx
-User said: hello
-AI said: Hello! Thanks for calling Test Coffee Shop. How can I help you today?
-User said: what do you serve
-RAG query: what do you serve
-AI said: We serve espresso for $3, latte for $4, and cappuccino for $4.50...
+📞 Incoming call webhook triggered
+Call details - SID: CAxxxxx, From: +1234567890, To: +1234567890
+✅ Found business: Test Coffee Shop (test-business-1)
+✅ Call log created
+🔗 Stream URL: wss://abc123.ngrok-free.app/api/twilio/stream
+✅ TwiML response generated with Stream
+✅ New Twilio WebSocket connection established
+📨 Received event: start
+🎬 Call started - SID: CAxxxxx, Business: test-business-1
+📨 Received event: media
+...
+🛑 Call ended - SID: CAxxxxx
 ```
+
+**Note:** You'll see TODOs for OpenAI integration since realtime-service.ts needs to be implemented.
 
 **Terminal 3 (ngrok inspector):**
 ```bash
@@ -437,33 +410,45 @@ This shows all HTTP requests to your server:
 
 ### Test Scenarios
 
-**Scenario 1: Basic Conversation**
+**Current Status:** The WebSocket infrastructure is complete. You can test call routing and WebSocket connectivity now!
+
+**Scenario 1: Call Routing Test** (Works now!)
 ```
-You: "Hello"
-AI: "Hello! Thanks for calling Test Coffee Shop..."
-✅ Check: AI responds with greeting from config
+Action: Call your Twilio number
+Expected logs:
+- "📞 Incoming call webhook triggered"
+- "✅ Found business: Test Coffee Shop"
+- "✅ Call log created"
+- "✅ TwiML response generated with Stream"
+✅ Check: Call is received and routed correctly
 ```
 
-**Scenario 2: RAG Query**
+**Scenario 2: WebSocket Connection** (Works now!)
 ```
-You: "What coffee drinks do you have?"
-AI: "We serve espresso, latte, and cappuccino..."
-✅ Check: AI uses knowledge base (check console for "RAG query")
-```
-
-**Scenario 3: Complex Question**
-```
-You: "How much is a latte and do you have WiFi?"
-AI: "A latte is $4. Let me check about WiFi..."
-✅ Check: Multiple RAG queries if needed
+Action: Call stays connected
+Expected logs:
+- "✅ New Twilio WebSocket connection established"
+- "📨 Received event: start"
+- "🎬 Call started - SID: CAxxxxx, Business: test-business-1"
+- Multiple "📨 Received event: media" (audio chunks)
+✅ Check: WebSocket connection established and receiving audio
 ```
 
-**Scenario 4: Call Completion**
+**Scenario 3: Call Termination** (Works now!)
 ```
-You: Hang up
-✅ Check: Transcript saved in database
-✅ Check: Call log updated with duration
+Action: Hang up the call
+Expected logs:
+- "📨 Received event: stop"
+- "🛑 Call ended - SID: CAxxxxx"
+- "🔌 WebSocket connection closed"
+✅ Check: Call ends gracefully
 ```
+
+**Future Scenarios** (After implementing realtime-service.ts):
+- AI greeting and conversation
+- RAG knowledge base queries
+- Transcript capture
+- Full conversation flow
 
 ### Verify in Database
 
@@ -471,10 +456,18 @@ You: Hang up
 npm run prisma:studio
 ```
 
+**Current Status:** Call logs are created automatically
+
 Check:
 - **CallLog** table → See your test call
-- **transcript** field → Full conversation
-- **duration** field → Call length
+- **callSid** field → Twilio call ID
+- **fromNumber** / **toNumber** → Phone numbers
+- **status** field → "initiated"
+- **businessId** field → Links to test-business-1
+
+**After implementing realtime-service.ts:**
+- **transcript** field → Full conversation JSON
+- **duration** field → Call length in seconds
 - **status** field → "completed"
 
 ---
@@ -499,11 +492,13 @@ console.log('🔍 RAG query:', query);
 
 **1. "Cannot connect to database"**
 ```bash
-# Check PostgreSQL is running
-psql -U postgres -c "SELECT 1"
+# Verify Supabase connection string in .env
+cat .env | grep DATABASE_URL
 
-# Check DATABASE_URL in .env
-echo $DATABASE_URL
+# Test connection with Prisma
+npx prisma db pull
+
+# Check Supabase project is active at https://app.supabase.com
 ```
 
 **2. "ngrok tunnel not found"**
@@ -520,12 +515,13 @@ input_audio_format: 'g711_ulaw',  // Must be g711_ulaw for Twilio
 output_audio_format: 'g711_ulaw'
 ```
 
-**4. "RealtimeClient not defined"**
+**4. "WebSocket connection refused"**
 ```bash
-# Install dependencies
-npm install
-# Check import
-import { RealtimeClient } from '@openai/realtime-api-beta';
+# Make sure custom server is running
+npm run dev
+
+# Check server.js has WebSocket handling
+# Verify NEXT_PUBLIC_APP_URL in .env
 ```
 
 **5. "Twilio webhook 403 Forbidden"**
@@ -555,9 +551,9 @@ You'll see:
 
 ### Phase 1: Vector Service ✅
 - [ ] `generateEmbedding()` returns 1536-dimension array
-- [ ] `upsertContent()` adds to Pinecone
-- [ ] `queryContent()` finds similar content
-- [ ] `deleteContent()` removes from Pinecone
+- [ ] `upsertContent()` stores vector in Supabase pgvector
+- [ ] `queryContent()` finds similar content using cosine distance
+- [ ] `deleteContent()` removes from Supabase
 - [ ] RAG API POST creates content
 - [ ] RAG API GET lists content
 - [ ] RAG API PUT updates content
@@ -573,15 +569,18 @@ You'll see:
 ### Phase 3: Real-time Voice ✅
 - [ ] ngrok tunnel working
 - [ ] Twilio webhooks configured
-- [ ] WebSocket connections established
-- [ ] Audio flowing: You → Twilio → Server → OpenAI
-- [ ] Audio flowing: OpenAI → Server → Twilio → You
-- [ ] Transcriptions captured
-- [ ] RAG queries triggered
-- [ ] Knowledge base results used in responses
-- [ ] Transcripts saved to database
-- [ ] Call logs created/updated
-- [ ] Can end call gracefully
+- [ ] WebSocket connections established (server.js)
+- [ ] Call webhook receives calls (/api/twilio/voice)
+- [ ] WebSocket receives 'start' event
+- [ ] WebSocket receives 'media' events (audio chunks)
+- [ ] WebSocket receives 'stop' event
+- [ ] Call logs created in database
+- [ ] After implementing realtime-service.ts:
+  - [ ] Audio forwarded to OpenAI Real-time API
+  - [ ] AI responses sent back to Twilio
+  - [ ] Transcriptions captured
+  - [ ] RAG queries triggered
+  - [ ] Transcripts saved to database
 
 ---
 
@@ -618,11 +617,12 @@ curl http://localhost:3000/api/config?businessId=test
 ```bash
 # Watch server logs in Terminal 1
 # Look for:
-# - "New Twilio WebSocket connection"
-# - "RealtimeClient connected"
-# - "User said: ..."
-# - "AI said: ..."
-# - "RAG query: ..."
+# - "📞 Incoming call webhook triggered"
+# - "✅ Found business: ..."
+# - "✅ New Twilio WebSocket connection established"
+# - "📨 Received event: start/media/stop"
+# - "🎬 Call started - SID: ..."
+# - "🛑 Call ended - SID: ..."
 ```
 
 ---
