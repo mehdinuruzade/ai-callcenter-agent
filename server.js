@@ -49,8 +49,19 @@ app.prepare().then(async () => {
     // Don't reject connections without protocols - Twilio doesn't send them
     handleProtocols: (protocols, request) => {
       console.log('📋 Client requested protocols:', protocols);
+      console.log('📋 Request URL:', request.url);
       // Accept connection even if no protocols specified
-      return protocols && protocols.length > 0 ? protocols[0] : '';
+      const selected = protocols && protocols.length > 0 ? protocols[0] : false;
+      console.log('📋 Selected protocol:', selected || 'none');
+      return selected;
+    },
+    // Add more debugging
+    verifyClient: (info) => {
+      console.log('🔍 Verifying client connection:');
+      console.log('   Origin:', info.origin);
+      console.log('   Secure:', info.secure);
+      console.log('   URL:', info.req.url);
+      return true; // Accept all connections
     },
   });
 
@@ -67,7 +78,11 @@ app.prepare().then(async () => {
   wss.on('connection', async (twilioWs, req) => {
     console.log(`\n🔌 New WebSocket connection established at ${new Date().toISOString()}`);
     console.log('   Connection readyState:', twilioWs.readyState);
+    console.log('   Protocol:', twilioWs.protocol);
+    console.log('   URL:', req.url);
     console.log('   Request headers:', req.headers);
+    console.log('   BufferedAmount:', twilioWs.bufferedAmount);
+    console.log('   Extensions:', twilioWs.extensions);
     isCleaningUp = false;
 
     let messageCount = 0;
@@ -76,6 +91,12 @@ app.prepare().then(async () => {
     let streamSid = null;
     let sessionInitialized = false;
     let openAIService = null;
+
+    // Add immediate readyState check
+    console.log('✓ Connection handler setup started');
+    if (twilioWs.readyState !== 1) {
+      console.error('❌ WebSocket not in OPEN state at handler start!', twilioWs.readyState);
+    }
 
     // Send periodic pings to keep connection alive
     const pingInterval = setInterval(() => {
@@ -99,13 +120,24 @@ app.prepare().then(async () => {
       console.log('🏓 Received pong from Twilio');
     });
 
+    // Add raw data listener for debugging
+    twilioWs.on('data', (data) => {
+      console.log('📦 Raw data received (bytes):', data.length);
+    });
+
     // Handle Twilio messages with comprehensive error handling
     twilioWs.on('message', async (message) => {
+      console.log(`📬 RAW MESSAGE RECEIVED at ${new Date().toISOString()}`);
+      console.log('   Message type:', typeof message);
+      console.log('   Message length:', message.length);
+      console.log('   ReadyState:', twilioWs.readyState);
+
       clearTimeout(noMessageTimeout);
       messageCount++;
 
       try {
         const msgString = message.toString();
+        console.log('   Parsed string length:', msgString.length);
         const msg = JSON.parse(msgString);
         console.log(`📨 Message #${messageCount}: ${msg.event}`);
 
@@ -295,13 +327,51 @@ app.prepare().then(async () => {
     }
 
     twilioWs.on('error', (error) => {
-      console.error(`❌ WebSocket error: ${error.message}`);
+      console.error(`\n❌ ========== WEBSOCKET ERROR ==========`);
+      console.error('   Time:', new Date().toISOString());
+      console.error('   Message:', error.message);
+      console.error('   Stack:', error.stack);
+      console.error('   Code:', error.code);
+      console.error('   ReadyState:', twilioWs.readyState);
+      console.error('   Call SID:', callSid || 'N/A');
+      console.error('   Messages received:', messageCount);
+      console.error('=======================================\n');
     });
 
     twilioWs.on('close', (code, reason) => {
+      const closeTime = new Date().toISOString();
       clearTimeout(noMessageTimeout);
       clearInterval(pingInterval);
-      console.log(`🔌 WebSocket closed - Code: ${code}, Reason: ${reason || 'N/A'}, Call: ${callSid || 'N/A'}, Messages: ${messageCount}`);
+
+      console.log(`\n🔌 ========== WEBSOCKET CLOSED ==========`);
+      console.log('   Time:', closeTime);
+      console.log('   Code:', code);
+      console.log('   Reason:', reason ? reason.toString() : 'N/A');
+      console.log('   Call SID:', callSid || 'N/A');
+      console.log('   Messages received:', messageCount);
+      console.log('   Session initialized:', sessionInitialized);
+      console.log('   Was cleaning up:', isCleaningUp);
+
+      // Decode close codes
+      const closeReasons = {
+        1000: 'Normal Closure',
+        1001: 'Going Away',
+        1002: 'Protocol Error',
+        1003: 'Unsupported Data',
+        1005: 'No Status Received',
+        1006: 'Abnormal Closure',
+        1007: 'Invalid frame payload data',
+        1008: 'Policy Violation',
+        1009: 'Message too big',
+        1010: 'Missing Extension',
+        1011: 'Internal Error',
+        1012: 'Service Restart',
+        1013: 'Try Again Later',
+        1014: 'Bad Gateway',
+        1015: 'TLS Handshake Failed',
+      };
+      console.log('   Description:', closeReasons[code] || 'Unknown');
+      console.log('=========================================\n');
 
       if (callSid && !isCleaningUp) {
         isCleaningUp = true;
@@ -310,6 +380,10 @@ app.prepare().then(async () => {
         });
       }
     });
+
+    // Add event listener setup completion log
+    console.log('✓ All event listeners registered');
+    console.log('✓ Connection handler setup complete\n');
   });
 
   // Handle call end
@@ -404,17 +478,31 @@ app.prepare().then(async () => {
 
   // Handle WebSocket upgrade
   server.on('upgrade', (request, socket, head) => {
-    const { pathname } = parse(request.url, true);
-    console.log(`🔄 Upgrade request received:`);
-    console.log(`   Pathname: ${pathname}`);
-    console.log(`   Headers:`, request.headers);
+    const { pathname, query } = parse(request.url, true);
+    console.log(`\n🔄 ========== UPGRADE REQUEST ==========`);
+    console.log('   Time:', new Date().toISOString());
+    console.log('   Pathname:', pathname);
+    console.log('   Query:', query);
+    console.log('   Socket writable:', socket.writable);
+    console.log('   Socket readable:', socket.readable);
+    console.log('   Socket destroyed:', socket.destroyed);
+    console.log('   Headers:', request.headers);
+    console.log('========================================\n');
 
     if (pathname === '/api/twilio/stream') {
       console.log('✅ Valid upgrade path, handling upgrade...');
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        console.log('✅ Upgrade successful, emitting connection event');
-        wss.emit('connection', ws, request);
-      });
+
+      try {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          console.log('✅ Upgrade successful, emitting connection event');
+          console.log('   WebSocket readyState:', ws.readyState);
+          console.log('   WebSocket protocol:', ws.protocol);
+          wss.emit('connection', ws, request);
+        });
+      } catch (upgradeError) {
+        console.error('❌ Error during handleUpgrade:', upgradeError);
+        socket.destroy();
+      }
     } else {
       console.error(`❌ Invalid pathname: ${pathname}`);
       socket.destroy();
