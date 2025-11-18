@@ -5,7 +5,17 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+type SimilarContentResult = {
+  id: string;
+  title: string;
+  content: string;
+  category: string;
+  metadata: any | null;
+  similarity: number;
+};
+
 export class VectorService {
+
   /**
    * Create embedding for text using OpenAI
    */
@@ -74,13 +84,13 @@ export class VectorService {
     query: string,
     businessId: string,
     limit: number = 5
-  ): Promise<any[]> {
+  ): Promise<SimilarContentResult[]> {
     try {
       // Create embedding for query
       const queryEmbedding = await this.createEmbedding(query);
 
       // Search using cosine similarity
-      const results = await prisma.$queryRaw`
+      const results = await prisma.$queryRaw<SimilarContentResult[]>`
         SELECT 
           id,
           title,
@@ -120,7 +130,7 @@ export class VectorService {
 
     // Format results for AI prompt
     const context = results
-      .map((result: any, index: number) => {
+      .map((result: SimilarContentResult, index: number) => {
         return `
 [Source ${index + 1}: ${result.title}]
 ${result.content}

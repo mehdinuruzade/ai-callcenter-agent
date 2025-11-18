@@ -14,6 +14,7 @@ const navigation = [
   { name: 'Businesses', href: '/admin/businesses', icon: '🏢' },
   { name: 'Knowledge Base', href: '/admin/rag', icon: '📚' },
   { name: 'Test RAG Search', href: '/admin/rag/test', icon: '🔍' },
+  { name: 'AI Config', href: '/admin/ai-config', icon: '🤖' },
   { name: 'Configuration', href: '/admin/config', icon: '⚙️' },
   { name: 'Call Logs', href: '/admin/calls', icon: '📞' },
 ];

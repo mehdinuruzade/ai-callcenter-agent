@@ -66,43 +66,46 @@ model RAGContent {
 }
 
 model Configuration {
-  id    String @id @default(cuid())
-  key   String // e.g., "ai_personality", "greeting_message", "max_call_duration"
-  value Json // Flexible JSON value
-  type  String // e.g., "string", "number", "boolean", "json"
-
+  id         String   @id @default(cuid())
   businessId String
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  key        String
+  value      String   @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@unique([businessId, key])
   @@index([businessId])
+  @@map("Configuration")
 }
 
 model CallLog {
-  id              String   @id @default(cuid())
-  callSid         String   @unique // Twilio Call SID
-  fromNumber      String
-  toNumber        String
-  duration        Int? // Duration in seconds
-  status          String // "initiated", "in-progress", "completed", "failed"
-  recordingUrl    String?
-  transcript      String?  @db.Text
-  summary         String?  @db.Text
-  sentiment       String? // "positive", "neutral", "negative"
-  resolvedIssue   Boolean?
-  metadata        Json? // Additional call data
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String    @id @default(cuid())
+  callSid       String    @unique
+  fromNumber    String    // Changed from 'from'
+  toNumber      String    // Changed from 'to'
+  businessId    String
+  status        String    @default("initiated")
+  direction     String    @default("inbound")
+  startTime     DateTime  @default(now())
+  endTime       DateTime?
+  duration      Int?      // Duration in seconds
+  recordingUrl  String?
+  transcript    String?   @db.Text
+  summary       String?   @db.Text
+  sentiment     String?
+  resolvedIssue Boolean?
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  businessId String
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([businessId])
+  @@index([callSid])
   @@index([createdAt])
-  @@index([status])
+  @@map("CallLog")
 }
 
 model PhoneNumber {
