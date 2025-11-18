@@ -113,6 +113,25 @@ Relevance: ${(result.similarity * 100).toFixed(1)}%
         return context;
     }
     /**
+     * Update embedding for existing content
+     */
+    async updateEmbedding(id, content) {
+        try {
+            const embedding = await this.createEmbedding(content);
+            await prisma_1.prisma.$executeRaw `
+        UPDATE "RAGContent"
+        SET embedding = ${JSON.stringify(embedding)}::vector,
+            "updatedAt" = NOW()
+        WHERE id = ${id}
+      `;
+            console.log(`✅ Updated embedding for content ${id}`);
+        }
+        catch (error) {
+            console.error('Error updating embedding:', error);
+            throw error;
+        }
+    }
+    /**
    * Delete RAG content and its embedding
    */
     async deleteContent(id) {

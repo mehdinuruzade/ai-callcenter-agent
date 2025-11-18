@@ -1,5 +1,13 @@
-import { RealtimeClient } from '@openai/realtime-api-beta';
 import WebSocket from 'ws';
+
+// Placeholder type until official OpenAI Realtime SDK is available in npm
+export interface RealtimeClient {
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+  updateSession?: (...args: any[]) => any;
+  addTool?: (...args: any[]) => any;
+  appendInputAudio?: (...args: any[]) => any;
+}
 
 
 export interface RealtimeSession {

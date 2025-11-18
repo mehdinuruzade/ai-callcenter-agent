@@ -16,14 +16,22 @@ class OpenAIRealtimeService extends events_1.EventEmitter {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 3;
         this.max_tokens = 4096;
-        this.enableTranscription = false;
+        this.enableTranscription = true;
         this.transcriptionModel = 'whisper-1';
         this.turnDetectionType = 'server_vad';
         this.vadThreshold = 0.5;
         this.vadPrefixPadding = 300;
         this.vadSilenceDuration = 500;
-        this.enableFunctionCalls = false;
+        this.enableFunctionCalls = true;
         this.config = config;
+        this.max_tokens = config.maxTokens ?? this.max_tokens;
+        this.enableFunctionCalls = config.enableFunctionCalls ?? this.enableFunctionCalls;
+        this.enableTranscription = config.enableTranscription ?? this.enableTranscription;
+        this.transcriptionModel = config.transcriptionModel ?? this.transcriptionModel;
+        this.turnDetectionType = config.turnDetectionType ?? this.turnDetectionType;
+        this.vadThreshold = config.vadThreshold ?? this.vadThreshold;
+        this.vadPrefixPadding = config.vadPrefixPadding ?? this.vadPrefixPadding;
+        this.vadSilenceDuration = config.vadSilenceDuration ?? this.vadSilenceDuration;
     }
     async connect() {
         return new Promise((resolve, reject) => {
