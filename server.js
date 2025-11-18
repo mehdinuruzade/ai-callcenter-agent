@@ -55,58 +55,15 @@ app.prepare().then(async () => {
   console.log('🔧 WebSocket Server created');
   console.log('   Path:', '/api/twilio/stream');
 
-  // Add this listener to see ALL events
-  wss.on('connection', function(ws, req) {
-    console.log('\n⚡ ========== WS CONNECTION EVENT FIRED ==========');
-    console.log('This log should appear first!');
-    console.log('Arguments count:', arguments.length);
-    console.log('WebSocket readyState:', ws.readyState);
-    console.log('Request URL:', req.url);
-    console.log('====================================================\n');
-    
-    // Now your actual handler code here...
-    let messageCount = 0;
-    
-    ws.on('message', function(message) {
-      messageCount++;
-      console.log(`\n📨 MESSAGE #${messageCount}`);
-      console.log('Message:', message.toString());
-      console.log('============================\n');
-    });
-    
-    ws.on('error', function(error) {
-      console.error('\n❌ WS ERROR:', error);
-      console.error('============================\n');
-    });
-    
-    ws.on('close', function(code, reason) {
-      console.log('\n🔌 WS CLOSE');
-      console.log('Code:', code);
-      console.log('Reason:', reason.toString());
-      console.log('Messages received:', messageCount);
-      console.log('============================\n');
-    });
-    
-    console.log('✅ Event handlers attached\n');
-  });
-
+  // WebSocket server error handler
   wss.on('error', function(error) {
     console.error('\n❌ WSS SERVER ERROR:', error);
     console.error('============================\n');
   });
 
-  wss.on('headers', function(headers, request) {
-    console.log('\n📋 WSS HEADERS EVENT');
-    console.log('Headers:', headers);
-    console.log('============================\n');
-  });
-
+  // Main WebSocket connection handler
   wss.on('connection', async (twilioWs, req) => {
-    console.log(`\n🔌 ========== NEW CONNECTION ==========`);
-    console.log('Time:', new Date().toISOString());
-    console.log('Request headers:', JSON.stringify(req.headers, null, 2));
-    console.log('✅ WebSocket connection established - waiting for Twilio messages...');
-    console.log('======================================\n');
+    console.log(`\n🔌 New WebSocket connection established at ${new Date().toISOString()}`);
     isCleaningUp = false;
 
     let messageCount = 0;
@@ -133,38 +90,27 @@ app.prepare().then(async () => {
     twilioWs.on('message', async (message) => {
       clearTimeout(noMessageTimeout);
       messageCount++;
-      console.log(`\n📨 MESSAGE #${messageCount} ==========`);      
 
       try {
         const msgString = message.toString();
-        console.log('Raw message:', msgString);        
-
         const msg = JSON.parse(msgString);
-        console.log('Event type:', msg.event);
+        console.log(`📨 Message #${messageCount}: ${msg.event}`);
 
         switch (msg.event) {
           case 'connected':
-            console.log('✅ Stream connected event received');
-            console.log('Protocol:', msg.protocol);
-            console.log('Version:', msg.version);
+            console.log(`✅ Stream connected - Protocol: ${msg.protocol}, Version: ${msg.version}`);
             break;
 
           case 'start':
             try {
               streamSid = msg.start.streamSid;
               callSid = msg.start.callSid;
-              
-              console.log('📡 ========== STREAM START ==========');
-              console.log('Stream SID:', streamSid);
-              console.log('Call SID:', callSid);
-              console.log('Start object:', JSON.stringify(msg.start, null, 2));
-              
+
               // Extract custom parameters safely
               const customParameters = msg.start.customParameters || {};
               businessId = customParameters.businessId;
-              
-              console.log('Business ID from params:', businessId);
-              console.log('Custom Parameters:', customParameters);
+
+              console.log(`📡 Stream started - Call: ${callSid}, Business: ${businessId}`);
 
               if (!callSid) {
                 console.error('❌ Missing callSid');
@@ -177,14 +123,12 @@ app.prepare().then(async () => {
               }
 
               // Initialize the session
-              console.log('🔧 Starting session initialization...');
               await initializeSession(twilioWs, callSid, businessId);
               sessionInitialized = true;
-              console.log('✅ Session initialization complete');
-              
+              console.log('✅ Session initialized successfully');
+
             } catch (startError) {
-              console.error('❌ Error in start event handler:', startError);
-              console.error('Stack:', startError.stack);
+              console.error('❌ Error in start event handler:', startError.message);
             }
             break;
 
@@ -215,22 +159,15 @@ app.prepare().then(async () => {
             break;
         }
       } catch (error) {
-        console.error('❌ ========== ERROR PROCESSING MESSAGE ==========');
-        console.error('Error:', error);
-        console.error('Message:', error.message);
-        console.error('Stack:', error.stack);
-        console.error('================================================');
+        console.error('❌ Error processing message:', error.message);
       }
     });
 
     // Session initialization function
     async function initializeSession(twilioWs, callSid, businessId) {
-      console.log('🔧 ========== INITIALIZING SESSION ==========');
-      console.log('Call SID:', callSid);
-      console.log('Business ID:', businessId);
-      
+      console.log(`🔧 Initializing session for Call: ${callSid}, Business: ${businessId}`);
+
       try {
-        console.log('📊 Fetching business from database...');
         const business = await prisma.business.findUnique({
           where: { id: businessId },
           include: { 
@@ -254,9 +191,9 @@ app.prepare().then(async () => {
           }
         });
 
-        const systemPrompt = configMap.ai_personality || 
+        const systemPrompt = configMap.ai_personality ||
           `You are a helpful and professional customer service agent for ${business.name}. Be friendly, concise, and helpful.`;
-        
+
         const voice = configMap.ai_voice || 'alloy';
         const temperature = parseFloat(configMap.temperature) || 0.8;
         const maxTokens = parseInt(configMap.max_tokens) || 4096;
@@ -267,13 +204,9 @@ app.prepare().then(async () => {
         const vadPrefixPadding = parseInt(configMap.vad_prefix_padding_ms) || 300;
         const vadSilenceDuration = parseInt(configMap.vad_silence_duration_ms) || 500;
 
-        console.log('⚙️  Configuration:');
-        console.log(`   Voice: ${voice}`);
-        console.log(`   Temperature: ${temperature}`);
+        console.log(`⚙️  AI Config - Voice: ${voice}, Temp: ${temperature}, VAD: ${turnDetectionType}`);
 
         if (OpenAIRealtimeService) {
-          console.log('🤖 Initializing OpenAI service...');
-          
           openAIService = new OpenAIRealtimeService({
             businessId,
             callSid,
@@ -315,12 +248,10 @@ app.prepare().then(async () => {
           });
 
           try {
-            console.log('🔌 Connecting to OpenAI...');
             await openAIService.connect();
             console.log('✅ OpenAI connected successfully');
           } catch (error) {
-            console.error('❌ Failed to connect to OpenAI:', error);
-            console.error('Stack:', error.stack);
+            console.error('❌ Failed to connect to OpenAI:', error.message);
             return;
           }
         } else {
@@ -335,67 +266,48 @@ app.prepare().then(async () => {
           startTime: new Date(),
         });
 
-        console.log('✅ Session stored in activeSessions');
-        console.log('Active sessions count:', activeSessions.size);
-        console.log('============================================\n');
+        console.log(`✅ Session stored - Active sessions: ${activeSessions.size}\n`);
 
       } catch (error) {
-        console.error('❌ ========== SESSION INIT ERROR ==========');
-        console.error('Error:', error);
-        console.error('Message:', error.message);
-        console.error('Stack:', error.stack);
-        console.error('===========================================');
-        
+        console.error('❌ SESSION INIT ERROR:', error.message);
+
         if (openAIService) {
           try {
             openAIService.close();
           } catch (closeError) {
-            console.error('Error closing OpenAI service:', closeError);
+            console.error('Error closing OpenAI service:', closeError.message);
           }
         }
       }
     }
 
     twilioWs.on('error', (error) => {
-      console.error('\n❌ ========== WEBSOCKET ERROR ==========');
-      console.error('Error:', error);
-      console.error('Stack:', error.stack);
-      console.error('========================================\n');
+      console.error(`❌ WebSocket error: ${error.message}`);
     });
 
     twilioWs.on('close', (code, reason) => {
       clearTimeout(noMessageTimeout);
-      console.log('\n🔌 ========== WEBSOCKET CLOSED ==========');
-      console.log('Close code:', code);
-      console.log('Reason:', reason.toString() || '(empty)');
-      console.log('Call SID:', callSid);
-      console.log('Messages received:', messageCount);
-      console.log('Session initialized:', sessionInitialized);
-      console.log('========================================\n');
-      
+      console.log(`🔌 WebSocket closed - Code: ${code}, Call: ${callSid || 'N/A'}, Messages: ${messageCount}`);
+
       if (callSid && !isCleaningUp) {
         isCleaningUp = true;
         handleCallEnd(callSid).catch(err => {
-          console.error('Error in handleCallEnd:', err);
+          console.error('Error in handleCallEnd:', err.message);
         });
       }
     });
-
-    console.log('✅ WebSocket connection established');
-    console.log('======================================\n');
   });
 
   // Handle call end
   async function handleCallEnd(callSid) {
     const session = activeSessions.get(callSid);
-    
+
     if (!session) {
-      console.log('⏭️  Session already cleaned up for:', callSid);
+      console.log(`⏭️  Session already cleaned up for: ${callSid}`);
       return;
     }
 
-    console.log(`\n🏁 ========== CALL ENDING ==========`);
-    console.log(`   Call SID: ${callSid}`);
+    console.log(`🏁 Call ending: ${callSid}`);
 
     try {
       // Remove from active sessions immediately to prevent duplicate cleanup
@@ -409,7 +321,6 @@ app.prepare().then(async () => {
       // Get transcript if OpenAI service exists
       if (session.openAIService) {
         transcript = session.openAIService.getTranscript();
-        console.log(`   Transcript items: ${transcript.length}`);
 
         // Format transcript
         fullTranscript = transcript
@@ -438,12 +349,10 @@ app.prepare().then(async () => {
         },
       });
 
-      console.log('✅ Call log updated with transcript');
-      console.log(`   Sentiment: ${sentiment}`);
+      console.log(`✅ Call log updated - Transcript: ${transcript.length} items, Sentiment: ${sentiment}`);
 
       // Close OpenAI connection
       if (session.openAIService) {
-        console.log('🔌 Closing OpenAI connection');
         try {
           session.openAIService.close();
         } catch (closeError) {
@@ -452,10 +361,8 @@ app.prepare().then(async () => {
       }
 
     } catch (error) {
-      console.error('❌ Error handling call end:', error);
+      console.error('❌ Error handling call end:', error.message);
     }
-
-    console.log('===================================\n');
   }
 
   // Simple sentiment analysis
@@ -483,31 +390,24 @@ app.prepare().then(async () => {
 
   // Handle WebSocket upgrade
   server.on('upgrade', (request, socket, head) => {
-    console.log('\n🔄 ========== UPGRADE REQUEST ==========');
-    console.log('URL:', request.url);
-    
     const { pathname } = parse(request.url, true);
-    console.log('Pathname:', pathname);
+    console.log(`🔄 Upgrade request: ${pathname}`);
 
     if (pathname === '/api/twilio/stream') {
-      console.log('✅ Valid upgrade request - proceeding...');
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
       });
     } else {
-      console.error('❌ Invalid pathname:', pathname);
+      console.error(`❌ Invalid pathname: ${pathname}`);
       socket.destroy();
     }
-    console.log('======================================\n');
   });
 
   server.listen(port, (err) => {
     if (err) throw err;
-    console.log(`\n🚀 ========== SERVER STARTED ==========`);
-    console.log(`   HTTP: http://${hostname}:${port}`);
+    console.log(`\n🚀 Server started on http://${hostname}:${port}`);
     console.log(`   WebSocket: ws://${hostname}:${port}/api/twilio/stream`);
-    console.log(`   Environment: ${dev ? 'development' : 'production'}`);
-    console.log('======================================\n');
+    console.log(`   Environment: ${dev ? 'development' : 'production'}\n`);
   });
 
   // Graceful shutdown
