@@ -42,10 +42,16 @@ app.prepare().then(async () => {
     }
   });
 
-  // Create WebSocket server - SIMPLIFIED
-  const wss = new WebSocketServer({ 
+  // Create WebSocket server
+  const wss = new WebSocketServer({
     noServer: true,
     path: '/api/twilio/stream',
+    // Don't reject connections without protocols - Twilio doesn't send them
+    handleProtocols: (protocols, request) => {
+      console.log('📋 Client requested protocols:', protocols);
+      // Accept connection even if no protocols specified
+      return protocols && protocols.length > 0 ? protocols[0] : '';
+    },
   });
 
   console.log('🔧 WebSocket Server created');
@@ -60,6 +66,8 @@ app.prepare().then(async () => {
   // Main WebSocket connection handler
   wss.on('connection', async (twilioWs, req) => {
     console.log(`\n🔌 New WebSocket connection established at ${new Date().toISOString()}`);
+    console.log('   Connection readyState:', twilioWs.readyState);
+    console.log('   Request headers:', req.headers);
     isCleaningUp = false;
 
     let messageCount = 0;
@@ -68,6 +76,15 @@ app.prepare().then(async () => {
     let streamSid = null;
     let sessionInitialized = false;
     let openAIService = null;
+
+    // Send periodic pings to keep connection alive
+    const pingInterval = setInterval(() => {
+      if (twilioWs.readyState === 1) {
+        twilioWs.ping();
+      } else {
+        clearInterval(pingInterval);
+      }
+    }, 30000); // Every 30 seconds
 
     // Passive waiting for Twilio messages – just detect silence
     const noMessageTimeout = setTimeout(() => {
@@ -79,7 +96,7 @@ app.prepare().then(async () => {
     }, 5000);
 
     twilioWs.on('pong', () => {
-      console.log('🏓 Received pong');
+      console.log('🏓 Received pong from Twilio');
     });
 
     // Handle Twilio messages with comprehensive error handling
@@ -283,7 +300,8 @@ app.prepare().then(async () => {
 
     twilioWs.on('close', (code, reason) => {
       clearTimeout(noMessageTimeout);
-      console.log(`🔌 WebSocket closed - Code: ${code}, Call: ${callSid || 'N/A'}, Messages: ${messageCount}`);
+      clearInterval(pingInterval);
+      console.log(`🔌 WebSocket closed - Code: ${code}, Reason: ${reason || 'N/A'}, Call: ${callSid || 'N/A'}, Messages: ${messageCount}`);
 
       if (callSid && !isCleaningUp) {
         isCleaningUp = true;
@@ -387,10 +405,14 @@ app.prepare().then(async () => {
   // Handle WebSocket upgrade
   server.on('upgrade', (request, socket, head) => {
     const { pathname } = parse(request.url, true);
-    console.log(`🔄 Upgrade request: ${pathname}`);
+    console.log(`🔄 Upgrade request received:`);
+    console.log(`   Pathname: ${pathname}`);
+    console.log(`   Headers:`, request.headers);
 
     if (pathname === '/api/twilio/stream') {
+      console.log('✅ Valid upgrade path, handling upgrade...');
       wss.handleUpgrade(request, socket, head, (ws) => {
+        console.log('✅ Upgrade successful, emitting connection event');
         wss.emit('connection', ws, request);
       });
     } else {
