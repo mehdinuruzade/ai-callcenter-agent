@@ -7,6 +7,9 @@ const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
 const port = 3000;
 
+// Load environment variables
+require('dotenv').config();
+
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
@@ -45,6 +48,15 @@ app.prepare().then(() => {
 
     let callSid = null;
     let businessId = null;
+    let realtimeService = null;
+
+    // Dynamically import the realtime service
+    try {
+      const module = await import('./src/lib/realtime-service.js');
+      realtimeService = module.realtimeService;
+    } catch (error) {
+      console.error('❌ Error loading realtime service:', error);
+    }
 
     ws.on('message', async (message) => {
       try {
@@ -59,24 +71,35 @@ app.prepare().then(() => {
 
             if (!businessId) {
               console.error('⚠️ No businessId in custom parameters!');
+              break;
             }
 
-            // TODO: Initialize realtime session
-            // await realtimeService.createSession(callSid, businessId, ws);
+            // Initialize realtime session
+            if (realtimeService) {
+              try {
+                await realtimeService.createSession(callSid, businessId, ws);
+              } catch (error) {
+                console.error('❌ Error creating session:', error);
+              }
+            }
             break;
 
           case 'media':
-            if (callSid && data.media?.payload) {
-              // TODO: Forward audio to OpenAI
-              // realtimeService.handleIncomingAudio(callSid, data.media.payload);
+            if (callSid && data.media?.payload && realtimeService) {
+              // Forward audio to OpenAI
+              realtimeService.handleIncomingAudio(callSid, data.media.payload);
             }
             break;
 
           case 'stop':
             console.log(`🛑 Call ended - SID: ${callSid}`);
-            if (callSid) {
-              // TODO: End session
-              // await realtimeService.endSession(callSid);
+            if (callSid && realtimeService) {
+              // End session
+              try {
+                await realtimeService.endSession(callSid);
+              } catch (error) {
+                console.error('❌ Error ending session:', error);
+              }
             }
             break;
 
@@ -88,9 +111,16 @@ app.prepare().then(() => {
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', async () => {
       console.log('🔌 WebSocket connection closed');
-      // TODO: Cleanup session if needed
+      // Cleanup session if needed
+      if (callSid && realtimeService) {
+        try {
+          await realtimeService.endSession(callSid);
+        } catch (error) {
+          // Session might already be ended
+        }
+      }
     });
 
     ws.on('error', (error) => {

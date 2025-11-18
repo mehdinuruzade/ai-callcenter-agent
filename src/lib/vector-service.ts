@@ -9,40 +9,27 @@ const openai = new OpenAI({
 
 export class VectorService {
   /**
-   * TODO: Generate embeddings using OpenAI
-   *
-   * Steps:
-   * 1. Use openai.embeddings.create() with model 'text-embedding-3-small'
-   * 2. Pass the text as input
-   * 3. Return the embedding vector from response.data[0].embedding
+   * Generate embeddings using OpenAI
    *
    * @param text - The text to embed
    * @returns Promise<number[]> - The embedding vector (1536 dimensions)
    */
   async generateEmbedding(text: string): Promise<number[]> {
-    // TODO: Implement embedding generation
-    throw new Error('Not implemented: generateEmbedding');
+    try {
+      const response = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: text,
+      });
+
+      return response.data[0].embedding;
+    } catch (error) {
+      console.error('Error generating embedding:', error);
+      throw error;
+    }
   }
 
   /**
-   * TODO: Store RAG content with vector embedding in Supabase
-   *
-   * Steps:
-   * 1. Generate embedding for the content using generateEmbedding()
-   * 2. Convert embedding array to pgvector format: `[${embedding.join(',')}]`
-   * 3. Use prisma.$executeRaw to insert/update the record:
-   *    - INSERT INTO "RAGContent" (id, title, content, category, embedding, businessId, ...)
-   *    - Use Prisma.sql`...` for raw SQL with vector
-   *    - Cast embedding as vector: ${embeddingStr}::vector
-   * 4. Return the created record
-   *
-   * Example raw SQL:
-   * ```
-   * await prisma.$executeRaw`
-   *   INSERT INTO "RAGContent" (id, title, content, category, embedding, "businessId", "isActive", "createdAt", "updatedAt")
-   *   VALUES (${id}, ${title}, ${content}, ${category}, ${embeddingStr}::vector, ${businessId}, true, NOW(), NOW())
-   * `
-   * ```
+   * Store RAG content with vector embedding in Supabase
    *
    * @param id - Unique identifier for the content
    * @param content - The content text to store
@@ -59,41 +46,63 @@ export class VectorService {
       [key: string]: any;
     }
   ) {
-    // TODO: Implement content upsert with pgvector
-    throw new Error('Not implemented: upsertContent');
+    try {
+      // Generate embedding for the content
+      const embedding = await this.generateEmbedding(content);
+
+      // Convert embedding array to pgvector format
+      const embeddingStr = `[${embedding.join(',')}]`;
+
+      // Use raw SQL for upsert with pgvector
+      await prisma.$executeRaw`
+        INSERT INTO "RAGContent" (
+          id,
+          title,
+          content,
+          category,
+          metadata,
+          embedding,
+          "businessId",
+          "isActive",
+          "createdAt",
+          "updatedAt"
+        )
+        VALUES (
+          ${id},
+          ${metadata.title},
+          ${content},
+          ${metadata.category},
+          ${JSON.stringify(metadata)}::jsonb,
+          ${embeddingStr}::vector,
+          ${metadata.businessId},
+          true,
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          content = EXCLUDED.content,
+          category = EXCLUDED.category,
+          metadata = EXCLUDED.metadata,
+          embedding = EXCLUDED.embedding,
+          "updatedAt" = NOW()
+      `;
+
+      // Fetch and return the created/updated record
+      const record = await prisma.rAGContent.findUnique({
+        where: { id },
+      });
+
+      return record;
+    } catch (error) {
+      console.error('Error upserting content:', error);
+      throw error;
+    }
   }
 
   /**
-   * TODO: Query similar content using pgvector cosine similarity
-   *
-   * Steps:
-   * 1. Generate embedding for the query using generateEmbedding()
-   * 2. Convert embedding to pgvector format
-   * 3. Use prisma.$queryRaw to find similar vectors:
-   *    - SELECT id, title, content, category, (embedding <=> ${queryVector}::vector) as distance
-   *    - WHERE "businessId" = ${businessId} AND "isActive" = true
-   *    - ORDER BY embedding <=> ${queryVector}::vector
-   *    - LIMIT ${topK}
-   * 4. The <=> operator calculates cosine distance (lower = more similar)
-   * 5. Return results ordered by similarity
-   *
-   * Example raw SQL:
-   * ```
-   * const results = await prisma.$queryRaw<Array<{
-   *   id: string;
-   *   title: string;
-   *   content: string;
-   *   category: string;
-   *   distance: number;
-   * }>>`
-   *   SELECT id, title, content, category,
-   *          embedding <=> ${queryVectorStr}::vector as distance
-   *   FROM "RAGContent"
-   *   WHERE "businessId" = ${businessId} AND "isActive" = true
-   *   ORDER BY embedding <=> ${queryVectorStr}::vector
-   *   LIMIT ${topK}
-   * `
-   * ```
+   * Query similar content using pgvector cosine similarity
    *
    * @param query - The search query
    * @param businessId - Filter results by business
@@ -105,34 +114,65 @@ export class VectorService {
     businessId: string,
     topK: number = 5
   ): Promise<any[]> {
-    // TODO: Implement vector similarity search with pgvector
-    throw new Error('Not implemented: queryContent');
+    try {
+      // Generate embedding for the query
+      const queryEmbedding = await this.generateEmbedding(query);
+
+      // Convert embedding to pgvector format
+      const queryVectorStr = `[${queryEmbedding.join(',')}]`;
+
+      // Query similar vectors using cosine distance
+      // <=> operator calculates cosine distance (lower = more similar)
+      const results = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          title: string;
+          content: string;
+          category: string;
+          metadata: any;
+          distance: number;
+        }>
+      >`
+        SELECT
+          id,
+          title,
+          content,
+          category,
+          metadata,
+          embedding <=> ${queryVectorStr}::vector as distance
+        FROM "RAGContent"
+        WHERE "businessId" = ${businessId} AND "isActive" = true
+        ORDER BY embedding <=> ${queryVectorStr}::vector
+        LIMIT ${topK}
+      `;
+
+      return results;
+    } catch (error) {
+      console.error('Error querying content:', error);
+      throw error;
+    }
   }
 
   /**
-   * TODO: Delete content from Supabase
-   *
-   * Steps:
-   * 1. Use prisma.rAGContent.delete() to remove the record by id
-   *    - The vector embedding is automatically deleted with the record
+   * Delete content from Supabase
    *
    * @param id - The id of the content to delete
    */
   async deleteContent(id: string) {
-    // TODO: Implement content deletion
-    throw new Error('Not implemented: deleteContent');
+    try {
+      await prisma.rAGContent.delete({
+        where: { id },
+      });
+
+      console.log(`✅ Deleted content: ${id}`);
+    } catch (error) {
+      console.error('Error deleting content:', error);
+      throw error;
+    }
   }
 
   /**
-   * TODO: Update content in Supabase
-   *
-   * Steps:
-   * 1. Generate new embedding for updated content
-   * 2. Use prisma.$executeRaw to update the record:
-   *    - UPDATE "RAGContent"
-   *    - SET content = ?, embedding = ?::vector, title = ?, category = ?, "updatedAt" = NOW()
-   *    - WHERE id = ?
-   * 3. Return the updated record
+   * Update content in Supabase
    *
    * @param id - The id of the content to update
    * @param content - New content text
@@ -149,8 +189,36 @@ export class VectorService {
       [key: string]: any;
     }
   ) {
-    // TODO: Implement content update
-    throw new Error('Not implemented: updateContent');
+    try {
+      // Generate new embedding for updated content
+      const embedding = await this.generateEmbedding(content);
+
+      // Convert embedding to pgvector format
+      const embeddingStr = `[${embedding.join(',')}]`;
+
+      // Update the record with new embedding
+      await prisma.$executeRaw`
+        UPDATE "RAGContent"
+        SET
+          content = ${content},
+          title = ${metadata.title},
+          category = ${metadata.category},
+          metadata = ${JSON.stringify(metadata)}::jsonb,
+          embedding = ${embeddingStr}::vector,
+          "updatedAt" = NOW()
+        WHERE id = ${id}
+      `;
+
+      // Fetch and return the updated record
+      const record = await prisma.rAGContent.findUnique({
+        where: { id },
+      });
+
+      return record;
+    } catch (error) {
+      console.error('Error updating content:', error);
+      throw error;
+    }
   }
 }
 
