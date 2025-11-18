@@ -42,14 +42,10 @@ app.prepare().then(async () => {
     }
   });
 
-  // Create WebSocket server
+  // Create WebSocket server - SIMPLIFIED
   const wss = new WebSocketServer({ 
     noServer: true,
     path: '/api/twilio/stream',
-    handleProtocols: (protocols, request) => {
-      console.log('📋 Client requested protocols:', protocols);
-      return (protocols && protocols[0]) || false;
-    },
   });
 
   console.log('🔧 WebSocket Server created');
@@ -70,6 +66,15 @@ app.prepare().then(async () => {
     console.log(`\n🔌 ========== NEW CONNECTION ==========`);
     console.log('Time:', new Date().toISOString());
     console.log('Request headers:', JSON.stringify(req.headers, null, 2));
+
+    // Send immediate empty object to acknowledge connection
+    setTimeout(() => {
+      if (twilioWs.readyState === 1) {
+        console.log('📤 Sending empty ack to Twilio');
+        twilioWs.send('{}');
+      }
+    }, 100);
+
     console.log('✅ WebSocket connection established - waiting for Twilio messages...');
     console.log('======================================\n');
     isCleaningUp = false;
@@ -346,7 +351,6 @@ app.prepare().then(async () => {
       }
     });
 
-    console.log('✅ WebSocket connection established');
     console.log('======================================\n');
   });
 
