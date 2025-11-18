@@ -149,3 +149,104 @@ export async function DELETE(req: NextRequest) {
     );
   }
 }
+
+// PUT - Update RAG content with new embedding
+export async function PUT(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // ❌ WRONG: Reading from searchParams
+    // const { searchParams } = new URL(req.url);
+    // const id = searchParams.get('id');
+
+    // ✅ CORRECT: Read from request body like POST does
+    const body = await req.json();
+    const { id, title, content, category, metadata } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Content ID required' },
+        { status: 400 }
+      );
+    }
+
+    if (!title || !content || !category) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    // Verify ownership
+    const existingContent = await prisma.rAGContent.findUnique({
+      where: { id },
+      include: { business: true },
+    });
+
+    if (!existingContent || existingContent.business.userId !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Content not found' },
+        { status: 404 }
+      );
+    }
+
+    // Update in database
+    const updatedContent = await prisma.rAGContent.update({
+      where: { id },
+      data: {
+        title,
+        content,
+        category,
+        metadata: metadata || existingContent.metadata,
+      },
+    });
+
+    // Update embedding in vector database
+    try {
+      // Delete old vector from Supabase
+      // You need to implement deleteContent in your vectorService
+      await vectorService.deleteContent(id);
+      
+      // Store new vector with updated content
+      await vectorService.storeContent({
+        id: updatedContent.id,
+        title: updatedContent.title,
+        content: updatedContent.content,
+        category: updatedContent.category,
+        businessId: updatedContent.businessId,
+        metadata: updatedContent.metadata,
+      });
+    } catch (vectorError) {
+      console.error('Error updating vector:', vectorError);
+      // If vector update fails, revert database changes
+      await prisma.rAGContent.update({
+        where: { id },
+        data: {
+          title: existingContent.title,
+          content: existingContent.content,
+          category: existingContent.category,
+          metadata: existingContent.metadata,
+        },
+      });
+      
+      return NextResponse.json(
+        { error: 'Failed to update content embeddings' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      message: 'Content updated successfully',
+      content: updatedContent,
+    });
+  } catch (error) {
+    console.error('Error updating RAG content:', error);
+    return NextResponse.json(
+      { error: 'Failed to update content' },
+      { status: 500 }
+    );
+  }
+}

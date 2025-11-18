@@ -1,7 +1,6 @@
 import { RealtimeClient } from '@openai/realtime-api-beta';
 import WebSocket from 'ws';
-import { vectorService } from './vector-service';
-import { prisma } from './prisma';
+
 
 export interface RealtimeSession {
   callSid: string;

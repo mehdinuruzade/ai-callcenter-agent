@@ -5,7 +5,17 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+type SimilarContentResult = {
+  id: string;
+  title: string;
+  content: string;
+  category: string;
+  metadata: any | null;
+  similarity: number;
+};
+
 export class VectorService {
+
   /**
    * Create embedding for text using OpenAI
    */
@@ -27,6 +37,7 @@ export class VectorService {
    * Store RAG content with embedding in Supabase
    */
   async storeContent(data: {
+    id?: string;
     title: string;
     content: string;
     category: string;
@@ -36,6 +47,7 @@ export class VectorService {
     try {
       // Create embedding
       const embedding = await this.createEmbedding(data.content);
+      const recordId = data.id ?? null;
 
       // Store in database with embedding
       const ragContent = await prisma.$executeRaw`
@@ -43,7 +55,7 @@ export class VectorService {
           id, title, content, category, "businessId", 
           metadata, embedding, "isActive", "createdAt", "updatedAt"
         ) VALUES (
-          gen_random_uuid()::text,
+          COALESCE(${recordId}, gen_random_uuid()::text),
           ${data.title},
           ${data.content},
           ${data.category},
@@ -72,13 +84,13 @@ export class VectorService {
     query: string,
     businessId: string,
     limit: number = 5
-  ): Promise<any[]> {
+  ): Promise<SimilarContentResult[]> {
     try {
       // Create embedding for query
       const queryEmbedding = await this.createEmbedding(query);
 
       // Search using cosine similarity
-      const results = await prisma.$queryRaw`
+      const results = await prisma.$queryRaw<SimilarContentResult[]>`
         SELECT 
           id,
           title,
@@ -118,7 +130,7 @@ export class VectorService {
 
     // Format results for AI prompt
     const context = results
-      .map((result: any, index: number) => {
+      .map((result: SimilarContentResult, index: number) => {
         return `
 [Source ${index + 1}: ${result.title}]
 ${result.content}
@@ -129,6 +141,23 @@ Relevance: ${(result.similarity * 100).toFixed(1)}%
 
     return context;
   }
+
+  /**
+ * Delete RAG content and its embedding
+ */
+async deleteContent(id: string): Promise<void> {
+  try {
+    // Delete from database (this also removes the embedding)
+    await prisma.rAGContent.delete({
+      where: { id },
+    });
+
+    console.log(`✅ Content ${id} deleted successfully`);
+  } catch (error) {
+    console.error('Error deleting content:', error);
+    throw error;
+  }
+}
 }
 
 export const vectorService = new VectorService();

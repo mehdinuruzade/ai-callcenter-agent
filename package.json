@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "description": "Multi-domain AI Call Center Agent with Admin Panel",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "npm run build:server && node server.js",
+    "dev:watch": "concurrently \"npm run build:server -- --watch\" \"nodemon server.js\"",
+    "build": "npm run build:server && next build",
+    "build:server": "tsc --project tsconfig.server.json",
+    "start": "NODE_ENV=production npm run build:server && node server.js",
+    "twilio:phone":"twilio dev-phone",
     "lint": "next lint",
+    "dev:ngrok": "ngrok http 3000",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
@@ -46,7 +50,10 @@
     "tailwindcss": "^3.4.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "ngrok": "^5.0.0",
+    "nodemon": "^3.0.2",
+    "concurrently": "^8.2.2"
   },
   "engines": {
     "node": ">=18.0.0"

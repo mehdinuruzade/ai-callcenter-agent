@@ -1,22 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-/**
- * TODO: Handle Twilio call status updates
- *
- * Twilio sends status updates during and after a call (ringing, in-progress, completed, etc.)
- *
- * Steps to implement:
- * 1. Parse form data to get CallSid, CallStatus, CallDuration, RecordingUrl
- * 2. Update the call log in database using callSid
- * 3. Update fields: status, duration (parse to int), recordingUrl
- * 4. Return success JSON response
- * 5. Handle errors and return appropriate error response
- *
- * @param req - Next.js request object
- * @returns NextResponse with JSON
- */
 export async function POST(req: NextRequest) {
-  // TODO: Implement status callback handler
-  throw new Error('Not implemented: POST /api/twilio/status');
+  try {
+    console.log('📊 ========== CALL STATUS UPDATE ==========');
+    
+    const formData = await req.formData();
+    const callSid = formData.get('CallSid') as string;
+    const callStatus = formData.get('CallStatus') as string;
+    const callDuration = formData.get('CallDuration') as string;
+
+    console.log('📊 Status Update:');
+    console.log(`   Call SID: ${callSid}`);
+    console.log(`   Status: ${callStatus}`);
+    console.log(`   Duration: ${callDuration}s`);
+
+    // Build update data
+    const updateData: any = {
+      status: callStatus.toLowerCase(),
+    };
+
+    // Add endTime and duration for completed calls
+    if (callStatus === 'completed' || callStatus === 'failed' || callStatus === 'busy' || callStatus === 'no-answer') {
+      updateData.endTime = new Date();
+      
+      if (callDuration) {
+        updateData.duration = parseInt(callDuration);
+      }
+    }
+
+    const callLog = await prisma.callLog.updateMany({
+      where: { callSid },
+      data: updateData,
+    });
+
+    console.log(`✅ Updated ${callLog.count} call log(s)`);
+    console.log('==========================================\n');
+
+    return NextResponse.json({ 
+      success: true,
+      updated: callLog.count 
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating call status:', error);
+    return NextResponse.json(
+      { error: 'Failed to update call status' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(req: NextRequest) {
+  return NextResponse.json({
+    message: 'Twilio Status Callback',
+    endpoint: '/api/twilio/status',
+    method: 'POST',
+    status: 'operational',
+  });
 }
