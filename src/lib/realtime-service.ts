@@ -1,11 +1,12 @@
+import { RealtimeClient } from '@openai/realtime-api-beta';
 import WebSocket from 'ws';
 
 
 export interface RealtimeSession {
   callSid: string;
   businessId: string;
-  ws: WebSocket;
-  openaiWs?: WebSocket;
+  twilioWs: WebSocket;
+  realtimeClient?: RealtimeClient;
   transcript: string[];
 }
 
@@ -16,51 +17,58 @@ export class RealtimeService {
    * TODO: Create a new real-time session for a call
    *
    * Steps:
-   * 1. Create a session object with callSid, businessId, ws, empty transcript
+   * 1. Create a session object with callSid, businessId, twilioWs, empty transcript
    * 2. Store it in this.sessions Map using callSid as key
-   * 3. Call this.initializeOpenAI(session) to set up OpenAI connection
+   * 3. Call this.initializeRealtimeClient(session) to set up OpenAI Realtime client
    * 4. Return the session
    *
    * @param callSid - Twilio call SID
    * @param businessId - Business identifier
-   * @param ws - WebSocket connection to Twilio
+   * @param twilioWs - WebSocket connection to Twilio
    * @returns Promise<RealtimeSession>
    */
   async createSession(
     callSid: string,
     businessId: string,
-    ws: WebSocket
+    twilioWs: WebSocket
   ): Promise<RealtimeSession> {
     // TODO: Implement session creation
     throw new Error('Not implemented: createSession');
   }
 
   /**
-   * TODO: Initialize OpenAI Real-time API WebSocket connection
+   * TODO: Initialize OpenAI RealtimeClient
    *
    * Steps:
-   * 1. Create WebSocket to 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01'
-   * 2. Add headers: Authorization (Bearer token) and 'OpenAI-Beta': 'realtime=v1'
-   * 3. Store openaiWs in session.openaiWs
-   * 4. Set up event handlers:
-   *    - 'open': Send session.update with configuration (see OpenAI docs)
-   *    - 'message': Handle different response types (audio.delta, transcription, function_call, etc.)
-   *    - 'error': Log errors
-   *    - 'close': Log closure
-   * 5. In session.update, include:
+   * 1. Create new RealtimeClient({ apiKey, model })
+   *    - apiKey: process.env.OPENAI_API_KEY
+   *    - model: 'gpt-4o-realtime-preview-2024-12-17'
+   * 2. Get system instructions using buildSystemInstructions(businessId)
+   * 3. Update session configuration using client.updateSession():
    *    - modalities: ['text', 'audio']
-   *    - instructions: system prompt from buildSystemInstructions()
+   *    - instructions: system prompt
    *    - voice: 'alloy'
-   *    - audio formats: 'g711_ulaw' (for Twilio compatibility)
-   *    - tools: Define 'query_knowledge_base' function
-   *    - turn_detection: server_vad for real-time detection
+   *    - input_audio_format: 'g711_ulaw' (Twilio format)
+   *    - output_audio_format: 'g711_ulaw'
+   *    - turn_detection: { type: 'server_vad' }
+   * 4. Add tool using client.addTool():
+   *    - name: 'query_knowledge_base'
+   *    - description: 'Search company knowledge base'
+   *    - parameters: { query: string }
+   *    - handler: async function that calls vectorService and returns results
+   * 5. Set up event listeners:
+   *    - 'conversation.item.input_audio_transcription.completed': Store user transcript
+   *    - 'response.audio.delta': Forward audio to Twilio WebSocket
+   *    - 'response.done': Store AI transcript
+   * 6. Connect the client using client.connect()
+   * 7. Store client in session.realtimeClient
    *
    * @param session - The realtime session
    */
-  private async initializeOpenAI(session: RealtimeSession) {
-    // TODO: Implement OpenAI WebSocket initialization
-    // Hint: Check OpenAI Real-time API docs for session.update structure
-    throw new Error('Not implemented: initializeOpenAI');
+  private async initializeRealtimeClient(session: RealtimeSession) {
+    // TODO: Implement RealtimeClient initialization
+    // Hint: Check @openai/realtime-api-beta docs for RealtimeClient API
+    throw new Error('Not implemented: initializeRealtimeClient');
   }
 
   /**
@@ -87,37 +95,27 @@ export class RealtimeService {
   }
 
   /**
-   * TODO: Handle function calls from OpenAI (RAG queries)
+   * NOTE: With RealtimeClient, function calls are handled automatically via tool handlers!
    *
-   * Steps:
-   * 1. Check if response.name === 'query_knowledge_base'
-   * 2. Parse response.arguments to get the query string
-   * 3. Use vectorService.queryContent() to search knowledge base
-   *    - Pass query, session.businessId, and topK (e.g., 3)
-   * 4. Format the results into a readable string
-   * 5. Send back to OpenAI using 'conversation.item.create' with type 'function_call_output'
-   * 6. Include the call_id from the original function call
-   * 7. Trigger response generation with 'response.create'
+   * When you add a tool with client.addTool(), you provide a handler function.
+   * The SDK automatically:
+   * 1. Receives function call from OpenAI
+   * 2. Executes your handler
+   * 3. Sends result back to OpenAI
+   * 4. Triggers response generation
    *
-   * @param session - The realtime session
-   * @param response - The function call response from OpenAI
+   * So this method is NO LONGER NEEDED with the new architecture.
+   * Tool handler is registered in initializeRealtimeClient() instead.
    */
-  private async handleFunctionCall(
-    session: RealtimeSession,
-    response: any
-  ) {
-    // TODO: Implement function call handler
-    throw new Error('Not implemented: handleFunctionCall');
-  }
 
   /**
    * TODO: Handle incoming audio from Twilio
    *
    * Steps:
    * 1. Get session from this.sessions using callSid
-   * 2. Check if session exists and OpenAI WebSocket is open
-   * 3. Send audio to OpenAI using 'input_audio_buffer.append' event
-   * 4. Include the audioPayload in the audio field
+   * 2. Check if session and realtimeClient exist
+   * 3. Use client.appendInputAudio(audioPayload) to send audio to OpenAI
+   *    - The SDK handles the WebSocket communication
    *
    * @param callSid - The call SID
    * @param audioPayload - Base64 encoded audio from Twilio
@@ -134,7 +132,7 @@ export class RealtimeService {
    * 1. Get session from this.sessions
    * 2. Update call log in database with final transcript
    *    - Join transcript array with newlines
-   * 3. Close the OpenAI WebSocket connection
+   * 3. Disconnect the RealtimeClient using client.disconnect()
    * 4. Remove session from this.sessions Map
    *
    * @param callSid - The call SID to end
